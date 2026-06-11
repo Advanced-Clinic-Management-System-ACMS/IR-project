@@ -1,0 +1,76 @@
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class RetrievalModel(str, Enum):
+    TF_IDF = "tf_idf"
+    BM25 = "bm25"
+    EMBEDDING = "embedding"
+    HYBRID_SERIAL = "hybrid_serial"
+    HYBRID_PARALLEL = "hybrid_parallel"
+
+
+class DocumentInput(BaseModel):
+    doc_id: str
+    text: str
+    title: str | None = None
+
+
+class ProcessedDocument(BaseModel):
+    doc_id: str
+    tokens: list[str]
+    original_text: str
+
+
+class PreprocessRequest(BaseModel):
+    documents: list[DocumentInput]
+
+
+class PreprocessResponse(BaseModel):
+    processed: list[ProcessedDocument]
+    count: int
+
+
+class BuildIndexRequest(BaseModel):
+    processed_documents: list[ProcessedDocument]
+    dataset_name: str = "default"
+    save_embeddings: bool = False
+
+
+class BuildIndexResponse(BaseModel):
+    dataset_name: str
+    document_count: int
+    vocabulary_size: int
+    index_path: str
+    message: str
+
+
+class SearchRequest(BaseModel):
+    query: str
+    model: RetrievalModel = RetrievalModel.TF_IDF
+    top_k: int = Field(default=10, ge=1, le=100)
+    bm25_k1: float | None = None
+    bm25_b: float | None = None
+    hybrid_weights: dict[str, float] | None = None
+
+
+class SearchResultItem(BaseModel):
+    doc_id: str
+    score: float
+    rank: int
+    snippet: str | None = None
+
+
+class SearchResponse(BaseModel):
+    query: str
+    model: RetrievalModel
+    results: list[SearchResultItem]
+    elapsed_ms: float
+
+
+class HealthResponse(BaseModel):
+    service: str
+    status: str
+    details: dict[str, Any] | None = None
