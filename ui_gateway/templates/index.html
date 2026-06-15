@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 نظام استرجاع المعلومات</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+        .search-form {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .search-input {
+            flex: 3;
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            transition: all 0.3s;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .select-model {
+            flex: 1;
+            padding: 15px;
+            font-size: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+        }
+        .select-k {
+            flex: 0.5;
+            padding: 15px;
+            font-size: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+        }
+        .search-btn {
+            flex: 0.5;
+            padding: 15px 25px;
+            font-size: 1.1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .search-btn:hover {
+            transform: translateY(-2px);
+        }
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .result-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.2s;
+        }
+        .result-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .result-rank {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-right: 15px;
+        }
+        .result-id {
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: #333;
+        }
+        .result-score {
+            color: #28a745;
+            font-size: 0.9rem;
+            margin-left: 15px;
+        }
+        .tokens-info {
+            background: #e3f2fd;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            color: #1565c0;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .no-results {
+            text-align: center;
+            color: #666;
+            padding: 40px;
+        }
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 30px;
+            opacity: 0.8;
+        }
+        @media (max-width: 768px) {
+            .search-form {
+                flex-direction: column;
+            }
+            .header h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 نظام استرجاع المعلومات</h1>
+            <p>بحث في مجموعة Vaswani باستخدام TF-IDF, BM25, أو النموذج الهجين</p>
+        </div>
+
+        <div class="card">
+            <form method="post" action="/search" class="search-form">
+                <input type="text" name="query" class="search-input" 
+                       placeholder="اكتب سؤالك هنا... مثال: What is information retrieval system"
+                       value="{{ query }}" required>
+                <select name="model" class="select-model">
+                    <option value="tfidf" {% if model == 'tfidf' %}selected{% endif %}>🔬 TF-IDF</option>
+                    <option value="bm25" {% if model == 'bm25' %}selected{% endif %}>📊 BM25</option>
+                    <option value="hybrid" {% if model == 'hybrid' %}selected{% endif %}>🔄 Hybrid (TF-IDF + BM25)</option>
+                </select>
+                <select name="k" class="select-k">
+                    {% for i in [5,10,15,20,25,30] %}
+                    <option value="{{ i }}" {% if k == i %}selected{% endif %}>Top {{ i }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="search-btn">🔍 بحث</button>
+            </form>
+        </div>
+
+        {% if error %}
+        <div class="card">
+            <div class="error">
+                <strong>⚠️ خطأ:</strong> {{ error }}
+            </div>
+            <div class="tokens-info">
+                💡 تأكد من تشغيل الخدمات التالية:
+                <ul style="margin-top: 10px; margin-left: 20px;">
+                    <li>Preprocessing Service (port 8001)</li>
+                    <li>Retrieval Service (port 8003)</li>
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if query and not error %}
+        <div class="card">
+            <div class="results-header">
+                <h2>📄 نتائج البحث عن: "{{ query }}"</h2>
+                <span>النموذج: {{ model.upper() }}</span>
+            </div>
+            
+            {% if query_tokens %}
+            <div class="tokens-info">
+                🔍 كلمات البحث بعد المعالجة: <strong>{{ query_tokens | join(', ') }}</strong>
+            </div>
+            {% endif %}
+
+            {% if results %}
+                {% for result in results %}
+                <div class="result-item">
+                    <span class="result-rank">{{ loop.index }}</span>
+                    <span class="result-id">📄 {{ result.doc_id }}</span>
+                    <span class="result-score">⭐ التشابه: {{ "%.4f"|format(result.score) }}</span>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-results">
+                    😕 لا توجد نتائج لعملية البحث هذه. حاول تعديل كلمات البحث.
+                </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            <p>نظام استرجاع المعلومات | SOA Architecture | Preprocessing → Indexing → Retrieval → Evaluation</p>
+        </div>
+    </div>
+</body>
+</html>
