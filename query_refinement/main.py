@@ -1,41 +1,20 @@
+"""
+This is the application entry point.
+It initializes the FastAPI framework, registers routers, and configures the web server.
+"""
 from fastapi import FastAPI
-
-from shared.schemas import HealthResponse
+from query_refinement.api.routes import router
 
 app = FastAPI(
     title="Query Refinement Service",
-    description="Query reformulation, spelling correction, and suggestions.",
+    description="Query reformulation, spelling correction, and synonym expansion.",
     version="1.0.0",
 )
 
-
-@app.get("/health", response_model=HealthResponse)
-def health_check() -> HealthResponse:
-    return HealthResponse(service="query_refinement_service", status="ok")
-
-
-@app.post("/refine")
-def refine_query(payload: dict) -> dict:
-    query = payload.get("query", "").strip()
-    history = payload.get("history", [])
-
-    refined = query
-    suggestions = []
-
-    if history:
-        suggestions.append(history[-1])
-
-    return {
-        "original_query": query,
-        "refined_query": refined,
-        "suggestions": suggestions,
-        "notes": "Add spell correction and synonym expansion in the next iteration.",
-    }
-
+app.include_router(router)
 
 if __name__ == "__main__":
     import uvicorn
-
     from shared.config import SERVICE_PORTS
 
     uvicorn.run(
