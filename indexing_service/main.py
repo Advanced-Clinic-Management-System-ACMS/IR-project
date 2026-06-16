@@ -1,7 +1,9 @@
-from fastapi import FastAPI, HTTPException
-
-from indexing_service.indexer import InvertedIndexBuilder
-from shared.schemas import BuildIndexRequest, BuildIndexResponse, HealthResponse
+"""
+This is the application entry point.
+It initializes the FastAPI framework, registers routers, and configures the web server.
+"""
+from fastapi import FastAPI
+from indexing_service.api.routes import router
 
 app = FastAPI(
     title="Indexing Service",
@@ -9,35 +11,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
-
-@app.get("/health", response_model=HealthResponse)
-def health_check() -> HealthResponse:
-    return HealthResponse(service="indexing_service", status="ok")
-
-
-@app.post("/build-index", response_model=BuildIndexResponse)
-def build_index(request: BuildIndexRequest) -> BuildIndexResponse:
-    if not request.processed_documents:
-        raise HTTPException(status_code=400, detail="processed_documents cannot be empty.")
-
-    builder = InvertedIndexBuilder(request.dataset_name)
-    metadata = builder.build(
-        request.processed_documents,
-        save_embeddings=request.save_embeddings,
-    )
-
-    return BuildIndexResponse(
-        dataset_name=metadata["dataset_name"],
-        document_count=metadata["document_count"],
-        vocabulary_size=metadata["vocabulary_size"],
-        index_path=metadata["index_path"],
-        message="Index built successfully.",
-    )
-
+app.include_router(router)
 
 if __name__ == "__main__":
     import uvicorn
-
     from shared.config import SERVICE_PORTS
 
     uvicorn.run(
