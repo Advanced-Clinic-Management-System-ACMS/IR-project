@@ -1,0 +1,31 @@
+IR-project
+├── evaluation_service
+│   └── main.py
+├── indexing_service
+│   ├── indexer.py
+│   └── main.py
+├── preprocessing_service
+│   ├── main.py
+│   └── processor.py
+├── query_refinement
+│   └── main.py
+├── retrieval_service
+│   ├── main.py
+│   └── retriever.py
+├── scripts
+│   └── run_offline_pipeline.py
+├── shared
+│   ├── __init__.py
+│   ├── config.py
+│   ├── database.py
+│   └── schemas.py
+├── ui_gateway
+│   ├── templates
+│   │   └── index.html
+│   └── app.py
+├── .gitignore
+├── cmd.txt
+├── load_data.py
+├── print_tree.py
+├── README.md
+└── requirements.txt
