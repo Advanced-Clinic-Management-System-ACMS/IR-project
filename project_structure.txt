@@ -1,31 +1,77 @@
 IR-project
 ├── evaluation_service
+│   ├── api
+│   │   └── routes.py
+│   ├── core
+│   │   └── metrics.py
+│   ├── schemas
+│   │   └── payloads.py
+│   ├── services
+│   │   └── evaluator.py
 │   └── main.py
 ├── indexing_service
-│   ├── indexer.py
+│   ├── api
+│   │   └── routes.py
+│   ├── core
+│   │   └── builder.py
+│   ├── infrastructure
+│   │   └── storage.py
+│   ├── services
+│   │   └── orchestrator.py
 │   └── main.py
 ├── preprocessing_service
-│   ├── main.py
-│   └── processor.py
+│   ├── api
+│   │   └── routes.py
+│   ├── core
+│   │   └── nlp_engine.py
+│   ├── schemas
+│   │   └── payloads.py
+│   ├── services
+│   │   └── document_processor.py
+│   └── main.py
 ├── query_refinement
+│   ├── api
+│   │   └── routes.py
+│   ├── core
+│   │   └── refiner.py
+│   ├── schemas
+│   │   └── payloads.py
+│   ├── services
+│   │   └── refinement_service.py
 │   └── main.py
 ├── retrieval_service
-│   ├── main.py
-│   └── retriever.py
+│   ├── api
+│   │   └── routes.py
+│   ├── core
+│   │   └── scoring.py
+│   ├── infrastructure
+│   │   ├── index_repo.py
+│   │   ├── mongo_repo.py
+│   │   └── preprocess_client.py
+│   ├── services
+│   │   └── engine.py
+│   └── main.py
 ├── scripts
 │   └── run_offline_pipeline.py
 ├── shared
 │   ├── __init__.py
 │   ├── config.py
-│   ├── database.py
 │   └── schemas.py
 ├── ui_gateway
+│   ├── api
+│   │   └── routes.py
+│   ├── infrastructure
+│   │   └── backend_client.py
+│   ├── services
+│   │   └── orchestrator.py
 │   ├── templates
 │   │   └── index.html
-│   └── app.py
+│   └── main.py
 ├── .gitignore
 ├── cmd.txt
 ├── load_data.py
 ├── print_tree.py
+├── project_structure.txt
 ├── README.md
-└── requirements.txt
+├── requirements.txt
+└── strcture.txt
