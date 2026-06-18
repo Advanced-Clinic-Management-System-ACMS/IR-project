@@ -1,26 +1,29 @@
-from fastapi import APIRouter
+"""
+REST API controller for the retrieval microservice.
+"""
+from fastapi import APIRouter, HTTPException
 
-from retrieval_service.api.schemas import SearchRequest, SearchResponse
-from retrieval_service.engine.search_engine import SearchEngine
-
+from shared.schemas import HealthResponse, SearchRequest, SearchResponse
+from retrieval_service.services.engine import RetrievalEngine
 
 router = APIRouter()
-engine = SearchEngine()
+engine = RetrievalEngine()
 
 
-@router.get("/")
-def home():
-    return {"message": "IR System Running"}
+@router.get("/health", response_model=HealthResponse)
+def health_check() -> HealthResponse:
+    return HealthResponse(
+        service="retrieval_service",
+        status="ok",
+        details={"architecture": "index_repo + document_repo + preprocess_client"},
+    )
 
 
 @router.post("/search", response_model=SearchResponse)
-def search(request: SearchRequest):
-
-    results = engine.search(
-        request.model_type,
-        request.query,
-        request.documents,
-        request.mode
-    )
-
-    return SearchResponse(results=results)
+def search(request: SearchRequest) -> SearchResponse:
+    try:
+        return engine.search(request)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

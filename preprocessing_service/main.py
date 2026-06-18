@@ -2,6 +2,11 @@
 This is the application entry point.
 It initializes the FastAPI framework, registers routers, and configures the web server.
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from fastapi import FastAPI
 from preprocessing_service.api.routes import router
 

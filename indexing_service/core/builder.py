@@ -5,7 +5,10 @@ It is completely isolated from external dependencies like databases or file syst
 """
 import math
 from collections import Counter, defaultdict
+
 import numpy as np
+
+from shared.config import DEFAULT_EMBEDDING_MODEL
 from shared.schemas import ProcessedDocument
 
 class IndexBuilderCore:
@@ -83,3 +86,21 @@ class IndexBuilderCore:
         norms = np.linalg.norm(matrix, axis=1, keepdims=True)
         norms[norms == 0] = 1.0
         return matrix / norms
+
+    @staticmethod
+    def build_sentence_embeddings(
+        documents: list[ProcessedDocument],
+        model_name: str = DEFAULT_EMBEDDING_MODEL,
+        batch_size: int = 256,
+    ) -> tuple[np.ndarray, str]:
+        from sentence_transformers import SentenceTransformer
+
+        model = SentenceTransformer(model_name)
+        texts = [doc.original_text or " ".join(doc.tokens) for doc in documents]
+        embeddings = model.encode(
+            texts,
+            batch_size=batch_size,
+            show_progress_bar=len(documents) > 1000,
+            normalize_embeddings=True,
+        )
+        return np.asarray(embeddings, dtype=np.float32), model_name

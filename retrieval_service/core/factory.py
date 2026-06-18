@@ -1,24 +1,27 @@
-from retrieval_service.models.tfidf import TFIDFStrategy
-from retrieval_service.models.bm25 import BM25Strategy
-from retrieval_service.models.embedding import EmbeddingStrategy
-from retrieval_service.hybrid.hybrid import HybridStrategy
+from shared.schemas import RetrievalModel
+from retrieval_service.core.strategies import (
+    BM25Strategy,
+    BranchingHybridStrategy,
+    EmbeddingStrategy,
+    ParallelHybridStrategy,
+    RetrievalStrategy,
+    SerialHybridStrategy,
+    TFIDFStrategy,
+)
 
 
-class StrategyFactory:
-
+class RetrievalFactory:
     @staticmethod
-    def create(model_type, mode="serial"):
-
-        if model_type == "tfidf":
-            return TFIDFStrategy()
-
-        if model_type == "bm25":
-            return BM25Strategy()
-
-        if model_type == "embedding":
-            return EmbeddingStrategy()
-
-        if model_type == "hybrid":
-            return HybridStrategy(mode)
-
-        raise Exception("Unknown model type")
+    def create(model: RetrievalModel) -> RetrievalStrategy:
+        mapping: dict[RetrievalModel, RetrievalStrategy] = {
+            RetrievalModel.TF_IDF: TFIDFStrategy(),
+            RetrievalModel.BM25: BM25Strategy(),
+            RetrievalModel.EMBEDDING: EmbeddingStrategy(),
+            RetrievalModel.HYBRID_SERIAL: SerialHybridStrategy(),
+            RetrievalModel.HYBRID_PARALLEL: ParallelHybridStrategy(),
+            RetrievalModel.HYBRID_BRANCHING: BranchingHybridStrategy(),
+        }
+        strategy = mapping.get(model)
+        if strategy is None:
+            raise ValueError(f"Unsupported retrieval model: {model}")
+        return strategy

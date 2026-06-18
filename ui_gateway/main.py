@@ -2,6 +2,11 @@
 This is the application entry point.
 It initializes the FastAPI framework and mounts the UI web routes.
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from fastapi import FastAPI
 from ui_gateway.api.routes import router
 
@@ -20,6 +25,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "ui_gateway.main:app",
         host="127.0.0.1",
-        port=SERVICE_PORTS.get("ui_gateway", 8000), 
+        port=SERVICE_PORTS["ui_gateway"],
         reload=True,
     )

@@ -1,8 +1,0 @@
-# 1. حدث pip أولاً
-py -m pip install --upgrade pip
-
-# 2. ثبّت المكتبات الأساسية فقط (بدون اللي تسبب مشاكل)
-py -m pip install fastapi uvicorn pydantic requests nltk numpy ir-datasets
-
-# 3. جرب تشغيل الخدمة
-py preprocessing_service\main.py

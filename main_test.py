@@ -1,16 +1,17 @@
-from retrieval_service.engine.search_engine import SearchEngine
-engine = SearchEngine()
+"""Quick retrieval engine smoke test against built indexes."""
+from shared.schemas import RetrievalModel, SearchRequest
+from retrieval_service.services.engine import RetrievalEngine
 
-docs = [
-    "machine learning is amazing",
-    "deep learning improves search",
-    "information retrieval uses bm25",
-    "bert embeddings are powerful",
-    "nlp and search systems"
-]
-
-print(engine.search("tfidf", "machine learning", docs))
-print(engine.search("bm25", "information retrieval", docs))
-print(engine.search("embedding", "deep learning", docs))
-print(engine.search("hybrid_serial", "search systems", docs))
-print(engine.search("hybrid_parallel", "search systems", docs))
+engine = RetrievalEngine()
+response = engine.search(
+    SearchRequest(
+        query="information retrieval system",
+        model=RetrievalModel.TF_IDF,
+        top_k=3,
+    )
+)
+print(f"Query: {response.query}")
+print(f"Elapsed: {response.elapsed_ms} ms")
+for item in response.results:
+    print(f"  [{item.rank}] {item.doc_id} score={item.score}")
+    print(f"      {((item.text or '')[:120])}...")

@@ -10,6 +10,7 @@ class RetrievalModel(str, Enum):
     EMBEDDING = "embedding"
     HYBRID_SERIAL = "hybrid_serial"
     HYBRID_PARALLEL = "hybrid_parallel"
+    HYBRID_BRANCHING = "hybrid_branching"
 
 
 class DocumentInput(BaseModel):
@@ -51,9 +52,11 @@ class SearchRequest(BaseModel):
     query: str
     model: RetrievalModel = RetrievalModel.TF_IDF
     top_k: int = Field(default=10, ge=1, le=100)
+    dataset_name: str = "lotte_lifestyle_dev_forum"
     bm25_k1: float | None = None
     bm25_b: float | None = None
     hybrid_weights: dict[str, float] | None = None
+    use_refinement: bool = False
 
 
 class SearchResultItem(BaseModel):
@@ -61,13 +64,19 @@ class SearchResultItem(BaseModel):
     score: float
     rank: int
     snippet: str | None = None
+    text: str | None = None
+    title: str | None = None
 
 
 class SearchResponse(BaseModel):
     query: str
+    original_query: str | None = None
     model: RetrievalModel
     results: list[SearchResultItem]
     elapsed_ms: float
+    dataset_name: str | None = None
+    query_tokens: list[str] = Field(default_factory=list)
+    use_refinement: bool = False
 
 
 class HealthResponse(BaseModel):

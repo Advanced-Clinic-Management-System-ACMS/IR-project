@@ -1,0 +1,31 @@
+# IR Project - LoTTE (no MongoDB)
+
+cd "d:\five year\ir"
+py -m pip install -r requirements.txt
+py load_data.py
+
+# Terminal 1-4: backend services
+py preprocessing_service\main.py
+py indexing_service\main.py
+py retrieval_service\main.py
+py query_refinement\main.py
+
+# Terminal 5: build FULL LoTTE corpus (268K docs — takes hours)
+py scripts\run_offline_pipeline.py --ir-datasets
+
+# Resume if interrupted:
+# py scripts\run_offline_pipeline.py --ir-datasets --resume
+
+# Quick test only:
+# py scripts\run_offline_pipeline.py --ir-datasets --limit 500
+
+# Terminal 6: UI
+py ui_gateway\main.py
+
+# Browser: http://127.0.0.1:8000
+
+# Evaluation — ALL qrels queries (2076):
+py scripts\run_evaluation.py
+
+# Quick test:
+# py scripts\run_evaluation.py --query-limit 100

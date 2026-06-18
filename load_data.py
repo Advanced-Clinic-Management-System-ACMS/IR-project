@@ -1,37 +1,46 @@
-# load_lotte.py
+"""LoTTE dataset verification script."""
+import sys
+from pathlib import Path
+
+if sys.platform == "win32" and not sys.flags.utf8_mode:
+    import os
+
+    os.execv(sys.executable, [sys.executable, "-X", "utf8", *sys.argv])
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import ir_datasets
 
+from shared.config import DEFAULT_IR_DATASET
+
 print("=" * 60)
-print("📚 تحميل مجموعة LoTTE Lifestyle Forum")
+print("LoTTE Lifestyle Forum Dataset")
 print("=" * 60)
 
-# تحميل الوثائق والاستعلامات معاً
-dataset = ir_datasets.load("lotte/lifestyle/dev/forum")
+dataset = ir_datasets.load(DEFAULT_IR_DATASET)
 
-print(f"\n📄 عدد الوثائق: {dataset.docs_count():,}")
-print(f"❓ عدد الاستعلامات: {dataset.queries_count()}")
-print(f"⭐ عدد التقييمات (qrels): {dataset.qrels_count():,}")
+print(f"\nDataset ID: {DEFAULT_IR_DATASET}")
+print(f"Documents: {dataset.docs_count():,}")
+print(f"Queries: {dataset.queries_count():,}")
+print(f"Qrels entries: {dataset.qrels_count():,}")
 
-# عرض أول وثيقة
-print("\n📄 أول وثيقة:")
+print("\nFirst document:")
 for doc in dataset.docs_iter():
-    print(f"   ID: {doc.doc_id}")
-    print(f"   النص: {doc.text[:200]}...")
+    print(f"  doc_id: {doc.doc_id}")
+    print(f"  text: {(doc.text or '')[:200]}...")
     break
 
-# عرض أول استعلام
-print("\n❓ أول استعلام:")
+print("\nFirst query:")
 for query in dataset.queries_iter():
-    print(f"   ID: {query.query_id}")
-    print(f"   السؤال: {query.text}")
+    print(f"  query_id: {query.query_id}")
+    print(f"  text: {query.text}")
     break
 
-# عرض أول تقييم
-print("\n⭐ أول تقييم (qrel):")
+print("\nFirst qrel:")
 for qrel in dataset.qrels_iter():
-    print(f"   Query {qrel.query_id} → Document {qrel.doc_id} (Relevance: {qrel.relevance})")
+    print(f"  query_id={qrel.query_id} doc_id={qrel.doc_id} relevance={qrel.relevance}")
     break
 
 print("\n" + "=" * 60)
-print("✅ تم التحميل بنجاح! المجموعة جاهزة للمشروع.")
+print("Dataset is ready. Run the offline pipeline next.")
 print("=" * 60)

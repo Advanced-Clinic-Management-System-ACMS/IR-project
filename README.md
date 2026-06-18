@@ -1,81 +1,105 @@
-# Information Retrieval System (IR 2026)
+# Information Retrieval System (IR 2026) — LoTTE + SOA
 
-Python-based search engine project built with **Service-Oriented Architecture (SOA)** and **FastAPI**.
+Python search engine with **Service-Oriented Architecture (SOA)** and **Clean Architecture**.
 
-## Project Structure
+**Dataset:** `lotte/lifestyle/dev/forum` from [ir-datasets](https://ir-datasets.com/lotte)  
+**Download location:** `C:\Users\<USER>\.ir_datasets\lotte` (~4GB)
 
-```text
-ir_project/
-├── preprocessing_service/   # NLTK cleaning, tokenization, stemming
-├── indexing_service/        # Inverted index, TF-IDF, BM25 stats, embeddings
-├── retrieval_service/       # TF-IDF, BM25, Embeddings, Hybrid search
-├── query_refinement/        # Query reformulation service
-├── evaluation_service/      # MAP, Recall, Precision@10, nDCG
-├── ui_gateway/              # Streamlit demo UI
-├── shared/                  # Common schemas, config, MongoDB helper
-├── scripts/                 # Offline pipeline scripts
-└── data/                    # Raw, processed, and index files
-```
+## Storage model (file-based, no MongoDB)
 
-## Requirements
+| What | Where |
+|------|-------|
+| LoTTE source files | `~/.ir_datasets/lotte` |
+| Raw document text | `data/raw/lotte_lifestyle_dev_forum.jsonl` |
+| Processed tokens | `data/processed/lotte_lifestyle_dev_forum.jsonl` |
+| Indexes (TF-IDF, BM25, Sentence-BERT embeddings) | `data/indexes/lotte_lifestyle_dev_forum/` |
 
-- Python 3.11+
-- MongoDB running locally on `mongodb://localhost:27017`
+At **query time**, retrieval reads the **index from disk** and **original text from local JSONL/JSON files**.
+
+## Services
+
+| Service | Port | Role |
+|---------|------|------|
+| preprocessing_service | 8001 | NLTK normalization, tokenization, stemming |
+| indexing_service | 8002 | Inverted index, TF-IDF, BM25 stats, Sentence-BERT embeddings |
+| retrieval_service | 8003 | Strategy + Factory pattern; TF-IDF, BM25, Embedding, Hybrid |
+| query_refinement | 8004 | Spelling correction + WordNet synonym expansion |
+| evaluation_service | 8005 | MAP, Recall, P@10, nDCG |
+| ui_gateway | 8000 | Web UI (FastAPI + Jinja2) |
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system diagram.
 
 ## Setup
 
-```bash
-cd ir_project
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+```powershell
+cd "d:\five year\ir"
+py -m pip install -r requirements.txt
+py load_data.py
 ```
 
-## Run Services
+## Run (correct order)
 
-Open separate terminals from the `ir_project` folder:
+### 1) Start backend services (4 terminals)
 
-```bash
-python -m preprocessing_service.main
-python -m indexing_service.main
-python -m retrieval_service.main
-python -m query_refinement.main
-python -m evaluation_service.main
-streamlit run ui_gateway/app.py
+```powershell
+cd "d:\five year\ir"
+py preprocessing_service\main.py
+py indexing_service\main.py
+py retrieval_service\main.py
+py query_refinement\main.py
 ```
 
-## Build Indexes (Offline)
+### 2) Build indexes — full LoTTE corpus
 
-After services are running:
-
-```bash
-python scripts/run_offline_pipeline.py --limit 100
+```powershell
+py scripts\run_offline_pipeline.py --ir-datasets
 ```
 
-For a real dataset from [ir-datasets](https://ir-datasets.com):
+Quick test (500 docs):
 
-```bash
-python scripts/run_offline_pipeline.py --ir-datasets --dataset msmarco-passage/train --limit 200000
+```powershell
+py scripts\run_offline_pipeline.py --ir-datasets --limit 500
 ```
 
-## API Docs
+Resume after interruption:
 
-- Preprocessing: http://127.0.0.1:8001/docs
-- Indexing: http://127.0.0.1:8002/docs
-- Retrieval: http://127.0.0.1:8003/docs
-- Query Refinement: http://127.0.0.1:8004/docs
-- Evaluation: http://127.0.0.1:8005/docs
+```powershell
+py scripts\run_offline_pipeline.py --ir-datasets --resume
+```
 
-## Team Workflow (GitHub)
+### 3) Start UI
 
-1. Create one repository for the group.
-2. Each member works on a separate service folder or feature branch.
-3. Use pull requests instead of pushing directly to `main`.
-4. Do not upload full datasets to GitHub; store them locally or with Git LFS if needed.
+```powershell
+py ui_gateway\main.py
+```
 
-## Notes
+Open: http://127.0.0.1:8000
 
-- Raw documents must be read from MongoDB during online search.
-- Processed data and indexes can be stored in files during offline processing.
-- Hybrid retrieval supports both serial and parallel fusion.
-- BM25 parameters `k1` and `b` can be changed from the UI/API.
+## Retrieval models
+
+| Model | Implementation |
+|-------|----------------|
+| TF-IDF | VSM cosine similarity |
+| BM25 | Probabilistic ranking (`k1`, `b` from UI) |
+| Embedding | `sentence-transformers/all-MiniLM-L6-v2` (384-d dense vectors) |
+| Hybrid Serial | BM25 top-100 → embedding re-ranking |
+| Hybrid Parallel | TF-IDF + BM25 + Embedding in parallel → **RRF fusion** |
+| Hybrid Branching | Model chosen by query length |
+
+Production path: `retrieval_service/core/factory.py` → `core/strategies/` → `core/scoring.py`
+
+## Evaluation (all 2076 qrels queries)
+
+```powershell
+py scripts\run_evaluation.py
+jupyter notebook evaluation.ipynb
+```
+
+Use `--query-limit 100` only for quick local testing.
+
+## Name mapping
+
+```
+ir-datasets ID : lotte/lifestyle/dev/forum
+local folder   : lotte_lifestyle_dev_forum
+```

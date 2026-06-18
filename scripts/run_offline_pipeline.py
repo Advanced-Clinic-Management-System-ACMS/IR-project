@@ -1,28 +1,30 @@
 """
-Offline Information Retrieval Pipeline.
-Orchestrates data loading, API-driven preprocessing, bulk MongoDB storage, and API-driven indexing.
+Offline pipeline for LoTTE.
+Streams documents from ir-datasets, preprocesses in batches, saves JSONL,
+and builds indexes locally (avoids HTTP payload limits on full corpus).
 """
+from __future__ import annotations
+
 import argparse
 import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+
+if sys.platform == "win32" and not sys.flags.utf8_mode:
+    import os
+
+    os.execv(sys.executable, [sys.executable, "-X", "utf8", *sys.argv])
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import requests
-from pymongo import MongoClient
 
-from shared.config import (
-    DATA_DIR,
-    RAW_DIR,
-    SERVICE_URLS,
-    MONGO_URI,
-    MONGO_DB_NAME,
-    MONGO_DOCS_COLLECTION,
-)
-from shared.schemas import DocumentInput
+from indexing_service.services.orchestrator import IndexingOrchestrator
+from shared.config import DATA_DIR, DEFAULT_IR_DATASET, PROCESSED_DIR, RAW_DIR, SERVICE_URLS
+from shared.schemas import DocumentInput, ProcessedDocument
 
-# Configure professional logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -31,30 +33,57 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class MongoBatchUploader:
-    """Handles high-speed offline bulk inserts directly into MongoDB."""
-    def __init__(self) -> None:
-        self.client: MongoClient = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-        self.collection = self.client[MONGO_DB_NAME][MONGO_DOCS_COLLECTION]
-
-    def upload_documents(self, documents: list[dict[str, Any]]) -> int:
-        if not documents:
-            return 0
-        logger.info("Clearing old documents from MongoDB...")
-        self.collection.delete_many({})
-        
-        logger.info("Bulk inserting new documents...")
-        result = self.collection.insert_many(documents)
-        return len(result.inserted_ids)
+def sanitize_dataset_name(dataset_name: str) -> str:
+    return dataset_name.replace("/", "_")
 
 
-def load_sample_documents(limit: int = 100) -> list[DocumentInput]:
+def count_jsonl_lines(path: Path) -> int:
+    if not path.exists():
+        return 0
+    with path.open(encoding="utf-8") as handle:
+        return sum(1 for _ in handle)
+
+
+def append_jsonl(path: Path, items: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        for item in items:
+            handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+
+def iter_ir_dataset_documents(dataset_name: str, limit: int | None) -> Iterator[DocumentInput]:
+    try:
+        import ir_datasets
+    except ImportError:
+        logger.error("ir_datasets package not found. Run: pip install ir-datasets")
+        sys.exit(1)
+
+    dataset = ir_datasets.load(dataset_name)
+    logger.info(
+        "Dataset stats: docs=%s queries=%s qrels=%s",
+        dataset.docs_count(),
+        dataset.queries_count(),
+        dataset.qrels_count(),
+    )
+
+    count = 0
+    for doc in dataset.docs_iter():
+        yield DocumentInput(
+            doc_id=str(doc.doc_id),
+            text=getattr(doc, "text", "") or "",
+            title=getattr(doc, "title", None),
+        )
+        count += 1
+        if limit and count >= limit:
+            break
+
+
+def load_sample_documents(limit: int) -> list[DocumentInput]:
     sample_path = RAW_DIR / "sample_documents.json"
     if sample_path.exists():
         payload = json.loads(sample_path.read_text(encoding="utf-8"))
         return [DocumentInput(**item) for item in payload[:limit]]
 
-    # Fallback to hardcoded mock data
     mock_data = [
         "Information retrieval systems help users find relevant documents.",
         "BM25 and TF-IDF are classic ranking models in search engines.",
@@ -67,113 +96,173 @@ def load_sample_documents(limit: int = 100) -> list[DocumentInput]:
     ][:limit]
 
 
-def load_from_ir_datasets(dataset_name: str, limit: int) -> list[DocumentInput]:
-    try:
-        import ir_datasets
-    except ImportError:
-        logger.error("ir_datasets package not found. Run: pip install ir_datasets")
-        sys.exit(1)
+def preprocess_batch(documents: list[DocumentInput], batch_size: int) -> list[dict[str, Any]]:
+    preprocess_url = f"{SERVICE_URLS['preprocessing']}/process-batch"
+    processed: list[dict[str, Any]] = []
 
-    logger.info(f"Downloading/Loading dataset '{dataset_name}' from ir_datasets...")
-    dataset = ir_datasets.load(dataset_name)
-    documents: list[DocumentInput] = []
-
-    for doc in dataset.docs_iter():
-        documents.append(
-            DocumentInput(
-                doc_id=doc.doc_id,
-                text=getattr(doc, "text", "") or "",
-                title=getattr(doc, "title", None),
-            )
+    for start in range(0, len(documents), batch_size):
+        batch = documents[start : start + batch_size]
+        logger.info("Preprocessing batch %s-%s of %s...", start + 1, start + len(batch), len(documents))
+        response = requests.post(
+            preprocess_url,
+            json={"documents": [doc.model_dump() for doc in batch]},
+            timeout=600,
         )
-        if len(documents) >= limit:
-            break
+        response.raise_for_status()
+        processed.extend(response.json()["processed"])
 
+    return processed
+
+
+def load_processed_from_jsonl(path: Path) -> list[ProcessedDocument]:
+    documents: list[ProcessedDocument] = []
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            documents.append(ProcessedDocument(**json.loads(line)))
     return documents
 
 
-def run_pipeline(dataset_name: str, limit: int, use_ir_datasets: bool) -> None:
+def build_index_local(dataset_name: str, processed_path: Path, save_embeddings: bool) -> dict:
+    logger.info("Loading processed documents from %s ...", processed_path)
+    processed = load_processed_from_jsonl(processed_path)
+    logger.info("Building index for %s documents (local orchestrator)...", len(processed))
+    return IndexingOrchestrator.execute_build(dataset_name, processed, save_embeddings)
+
+
+def run_pipeline(
+    dataset_name: str,
+    limit: int | None,
+    use_ir_datasets: bool,
+    batch_size: int,
+    save_embeddings: bool,
+    resume: bool,
+    index_only: bool,
+) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = sanitize_dataset_name(dataset_name)
+    raw_jsonl = RAW_DIR / f"{safe_name}.jsonl"
+    processed_jsonl = PROCESSED_DIR / f"{safe_name}.jsonl"
 
-    # 1. Load Data
-    logger.info("=== STEP 1: Loading Data ===")
-    if use_ir_datasets:
-        documents = load_from_ir_datasets(dataset_name, limit)
-    else:
-        documents = load_sample_documents(limit)
-    logger.info(f"Loaded {len(documents)} documents into memory.")
-
-    if not documents:
-        logger.warning("No documents found. Exiting pipeline.")
+    if index_only:
+        if not processed_jsonl.exists():
+            logger.error("Processed file not found: %s", processed_jsonl)
+            sys.exit(1)
+        logger.info("=== INDEX ONLY: skipping load/preprocess, reusing %s ===", processed_jsonl)
+        try:
+            metadata = build_index_local(safe_name, processed_jsonl, save_embeddings)
+        except Exception as exc:
+            logger.error("Indexing failed: %s", exc)
+            sys.exit(1)
+        logger.info("=== PIPELINE COMPLETED ===")
+        logger.info("Documents indexed: %s", metadata["document_count"])
+        logger.info("Indexes  : data/indexes/%s/", safe_name)
         return
 
-    # 2. Preprocessing via API
-    logger.info("=== STEP 2: Preprocessing ===")
+    if resume:
+        skipped = count_jsonl_lines(raw_jsonl)
+        logger.info("Resume mode: skipping first %s documents already saved.", skipped)
+    else:
+        skipped = 0
+        if raw_jsonl.exists():
+            raw_jsonl.unlink()
+        if processed_jsonl.exists():
+            processed_jsonl.unlink()
+
+    logger.info("=== STEP 1-3: Load, save raw, preprocess (streaming batches) ===")
+    if use_ir_datasets:
+        doc_iter = iter_ir_dataset_documents(dataset_name, limit)
+        batch: list[DocumentInput] = []
+        total_saved = skipped
+        seen = 0
+
+        for document in doc_iter:
+            seen += 1
+            if seen <= skipped:
+                continue
+            batch.append(document)
+            if len(batch) < batch_size:
+                continue
+
+            try:
+                processed = preprocess_batch(batch, batch_size)
+            except requests.exceptions.ConnectionError:
+                logger.error("Preprocessing service is offline. Start: py preprocessing_service\\main.py")
+                sys.exit(1)
+            except requests.exceptions.HTTPError as exc:
+                logger.error("Preprocessing failed: %s", exc.response.text)
+                sys.exit(1)
+
+            append_jsonl(raw_jsonl, [doc.model_dump() for doc in batch])
+            append_jsonl(processed_jsonl, processed)
+            total_saved += len(batch)
+            logger.info("Saved %s documents so far.", total_saved)
+            batch = []
+
+        if batch:
+            try:
+                processed = preprocess_batch(batch, batch_size)
+            except requests.exceptions.ConnectionError:
+                logger.error("Preprocessing service is offline. Start: py preprocessing_service\\main.py")
+                sys.exit(1)
+            append_jsonl(raw_jsonl, [doc.model_dump() for doc in batch])
+            append_jsonl(processed_jsonl, processed)
+            total_saved += len(batch)
+            logger.info("Saved %s documents so far.", total_saved)
+    else:
+        documents = load_sample_documents(limit or 100)
+        processed = preprocess_batch(documents, batch_size)
+        append_jsonl(raw_jsonl, [doc.model_dump() for doc in documents])
+        append_jsonl(processed_jsonl, processed)
+        total_saved = len(documents)
+
+    if total_saved == 0:
+        logger.warning("No documents processed. Exiting.")
+        return
+
+    logger.info("=== STEP 4: Index generation (full corpus) ===")
     try:
-        preprocess_url = f"{SERVICE_URLS['preprocessing']}/process-batch"
-        logger.info(f"Sending batch to {preprocess_url}...")
-        
-        preprocess_response = requests.post(
-            preprocess_url,
-            json={"documents": [doc.model_dump() for doc in documents]},
-            timeout=120,
-        )
-        preprocess_response.raise_for_status()
-        processed = preprocess_response.json()["processed"]
-        logger.info(f"Successfully preprocessed {len(processed)} documents.")
-    except requests.exceptions.ConnectionError:
-        logger.error("Failed to connect to Preprocessing Service. Is the server running?")
-        sys.exit(1)
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"Preprocessing API returned an error: {e.response.text}")
+        metadata = build_index_local(safe_name, processed_jsonl, save_embeddings)
+    except Exception as exc:
+        logger.error("Indexing failed: %s", exc)
         sys.exit(1)
 
-    # 3. Store Raw Documents in MongoDB
-    logger.info("=== STEP 3: MongoDB Storage ===")
-    try:
-        uploader = MongoBatchUploader()
-        raw_payload = [
-            {"doc_id": doc.doc_id, "text": doc.text, "title": doc.title}
-            for doc in documents
-        ]
-        inserted = uploader.upload_documents(raw_payload)
-        logger.info(f"Stored {inserted} raw documents in MongoDB.")
-    except Exception as e:
-        logger.error(f"MongoDB connection failed. Is MongoDB running on port 27017? Error: {e}")
-        sys.exit(1)
-
-    # 4. Build Index via API
-    logger.info("=== STEP 4: Index Generation ===")
-    try:
-        indexing_url = f"{SERVICE_URLS['indexing']}/build-index"
-        logger.info(f"Sending built request to {indexing_url}...")
-        
-        index_response = requests.post(
-            indexing_url,
-            json={
-                "processed_documents": processed,
-                "dataset_name": dataset_name.replace("/", "_"),
-                "save_embeddings": True,
-            },
-            timeout=300,
-        )
-        index_response.raise_for_status()
-        logger.info(f"Success: {index_response.json()['message']}")
-    except requests.exceptions.ConnectionError:
-        logger.error("Failed to connect to Indexing Service. Is the server running?")
-        sys.exit(1)
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"Indexing API returned an error: {e.response.text}")
-        sys.exit(1)
-
-    logger.info("=== PIPELINE COMPLETED SUCCESSFULLY ===")
+    logger.info("=== PIPELINE COMPLETED ===")
+    logger.info("Documents indexed: %s", metadata["document_count"])
+    logger.info("Raw docs : %s", raw_jsonl)
+    logger.info("Processed: %s", processed_jsonl)
+    logger.info("Indexes  : data/indexes/%s/", safe_name)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Build the offline IR pipeline.")
-    parser.add_argument("--dataset", type=str, default="default", help="Name of the dataset")
-    parser.add_argument("--limit", type=int, default=100, help="Max documents to process")
-    parser.add_argument("--ir-datasets", action="store_true", help="Fetch from ir_datasets library")
-    
+    parser = argparse.ArgumentParser(description="Build the offline IR pipeline for LoTTE.")
+    parser.add_argument("--dataset", type=str, default=DEFAULT_IR_DATASET, help="ir-datasets identifier")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional document limit for quick tests (omit for full LoTTE corpus)",
+    )
+    parser.add_argument("--ir-datasets", action="store_true", help="Load documents from ir-datasets")
+    parser.add_argument("--batch-size", type=int, default=500, help="Preprocessing batch size")
+    parser.add_argument("--no-embeddings", action="store_true", help="Skip embedding index generation")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip documents already saved in JSONL (use after interrupted runs)",
+    )
+    parser.add_argument(
+        "--index-only",
+        action="store_true",
+        help="Rebuild index from existing processed JSONL (skip load/preprocess)",
+    )
     args = parser.parse_args()
-    run_pipeline(args.dataset, args.limit, args.ir_datasets)
+
+    run_pipeline(
+        dataset_name=args.dataset,
+        limit=args.limit,
+        use_ir_datasets=args.ir_datasets,
+        batch_size=args.batch_size,
+        save_embeddings=not args.no_embeddings,
+        resume=args.resume,
+        index_only=args.index_only,
+    )

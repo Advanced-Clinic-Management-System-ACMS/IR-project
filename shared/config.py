@@ -6,9 +6,13 @@ RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 INDEX_DIR = DATA_DIR / "indexes"
 
-MONGO_URI = "mongodb://localhost:27017"
-MONGO_DB_NAME = "ir_project"
-MONGO_DOCS_COLLECTION = "documents"
+# File-based storage (no MongoDB):
+#   data/raw/<dataset>.json
+#   data/processed/<dataset>.json
+#   data/indexes/<dataset>/
+
+DEFAULT_IR_DATASET = "lotte/lifestyle/dev/forum"
+DEFAULT_DATASET_NAME = "lotte_lifestyle_dev_forum"
 
 SERVICE_PORTS = {
     "preprocessing": 8001,
@@ -16,6 +20,7 @@ SERVICE_PORTS = {
     "retrieval": 8003,
     "query_refinement": 8004,
     "evaluation": 8005,
+    "ui_gateway": 8000,
 }
 
 SERVICE_URLS = {
@@ -26,3 +31,4 @@ SERVICE_URLS = {
 DEFAULT_BM25_K1 = 1.5
 DEFAULT_BM25_B = 0.75
 DEFAULT_TOP_K = 10
+DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
