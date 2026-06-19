@@ -58,12 +58,18 @@ def load_queries(dataset_name: str, qrels: dict[str, dict[str, int]]) -> dict[st
     return queries
 
 
-def retrieve(query_text: str, model: RetrievalModel, top_k: int) -> list[str]:
+def retrieve(
+    query_text: str,
+    model: RetrievalModel,
+    top_k: int,
+    use_refinement: bool = False,
+) -> list[str]:
     payload = SearchRequest(
         query=query_text,
         model=model,
         top_k=top_k,
         dataset_name=DEFAULT_DATASET_NAME,
+        use_refinement=use_refinement,
     )
     response = requests.post(
         f"{SERVICE_URLS['retrieval']}/search",
@@ -106,6 +112,7 @@ def run_evaluation(
     query_limit: int | None,
     output_path: Path | None,
     use_api: bool,
+    use_refinement: bool = False,
 ) -> dict:
     check_service("retrieval", SERVICE_URLS["retrieval"])
     if use_api:
@@ -127,6 +134,7 @@ def run_evaluation(
     print(f"Total queries in qrels file: {len(qrels)}")
     print(f"Queries used in this evaluation run: {len(query_ids)}")
     print(f"Top-K: {top_k}")
+    print(f"Query refinement: {'ON' if use_refinement else 'OFF'}")
     print("=" * 70)
 
     all_metrics: dict[str, dict[str, float]] = {}
@@ -136,7 +144,7 @@ def run_evaluation(
         for idx, query_id in enumerate(query_ids, start=1):
             if idx % 25 == 0 or idx == 1:
                 print(f"  Query {idx}/{len(query_ids)}")
-            run[query_id] = retrieve(queries[query_id], model, top_k)
+            run[query_id] = retrieve(queries[query_id], model, top_k, use_refinement)
 
         metrics = evaluate_fn({model.value: run}, qrels, top_k)[model.value]
         all_metrics[model.value] = metrics
@@ -159,12 +167,83 @@ def run_evaluation(
         "total_qrels_queries": len(qrels),
         "evaluated_queries": len(query_ids),
         "top_k": top_k,
+        "use_refinement": use_refinement,
         "metrics": all_metrics,
     }
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print(f"Saved report to {output_path}")
+    return payload
+
+
+def run_refinement_comparison(
+    dataset_name: str,
+    models: list[RetrievalModel],
+    top_k: int,
+    query_limit: int | None,
+    output_path: Path | None,
+    use_api: bool,
+) -> dict:
+    """Compare retrieval metrics before vs after query refinement (same queries)."""
+    check_service("retrieval", SERVICE_URLS["retrieval"])
+    check_service("query_refinement", SERVICE_URLS["query_refinement"])
+    evaluate_fn = evaluate_runs_api if use_api else evaluate_runs_local
+
+    qrels = load_qrels(dataset_name)
+    queries = load_queries(dataset_name, qrels)
+    query_ids = sorted(queries.keys())
+    if query_limit:
+        query_ids = query_ids[:query_limit]
+
+    print("=" * 70)
+    print("REFINEMENT COMPARISON (before vs after)")
+    print(f"Dataset: {dataset_name}")
+    print(f"Queries: {len(query_ids)}")
+    print(f"Models: {[m.value for m in models]}")
+    print("=" * 70)
+
+    comparison: dict[str, dict] = {"models": {}}
+    for model in models:
+        print(f"\nModel: {model.value}")
+        run_before: dict[str, list[str]] = {}
+        run_after: dict[str, list[str]] = {}
+        for idx, query_id in enumerate(query_ids, start=1):
+            if idx % 25 == 0 or idx == 1:
+                print(f"  Query {idx}/{len(query_ids)}")
+            text = queries[query_id]
+            run_before[query_id] = retrieve(text, model, top_k, use_refinement=False)
+            run_after[query_id] = retrieve(text, model, top_k, use_refinement=True)
+
+        before_metrics = evaluate_fn({model.value: run_before}, qrels, top_k)[model.value]
+        after_metrics = evaluate_fn({model.value: run_after}, qrels, top_k)[model.value]
+        comparison["models"][model.value] = {
+            "before": before_metrics,
+            "after": after_metrics,
+            "delta_MAP": round(after_metrics["MAP"] - before_metrics["MAP"], 6),
+            "delta_nDCGAt10": round(after_metrics["nDCGAt10"] - before_metrics["nDCGAt10"], 6),
+        }
+        print(
+            f"  MAP:  {before_metrics['MAP']:.4f} -> {after_metrics['MAP']:.4f} "
+            f"(delta {comparison['models'][model.value]['delta_MAP']:+.4f})"
+        )
+        print(
+            f"  nDCG: {before_metrics['nDCGAt10']:.4f} -> {after_metrics['nDCGAt10']:.4f} "
+            f"(delta {comparison['models'][model.value]['delta_nDCGAt10']:+.4f})"
+        )
+
+    payload = {
+        "dataset": dataset_name,
+        "total_qrels_queries": len(qrels),
+        "evaluated_queries": len(query_ids),
+        "top_k": top_k,
+        "comparison_type": "query_refinement_before_after",
+        "models": comparison["models"],
+    }
+    if output_path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"\nSaved comparison to {output_path}")
     return payload
 
 
@@ -185,13 +264,43 @@ if __name__ == "__main__":
         default=[m.value for m in RetrievalModel],
         choices=[m.value for m in RetrievalModel],
     )
+    parser.add_argument(
+        "--use-refinement",
+        action="store_true",
+        help="Enable query refinement during retrieval",
+    )
+    parser.add_argument(
+        "--compare-refinement",
+        action="store_true",
+        help="Run before/after query refinement comparison (uses --models subset)",
+    )
+    parser.add_argument(
+        "--comparison-output",
+        default="data/evaluation/refinement_comparison.json",
+    )
     args = parser.parse_args()
     models = [RetrievalModel(name) for name in args.models]
-    run_evaluation(
-        dataset_name=args.dataset,
-        models=models,
-        top_k=args.top_k,
-        query_limit=args.query_limit,
-        output_path=Path(args.output),
-        use_api=args.use_api,
-    )
+
+    if args.compare_refinement:
+        if set(args.models) == {m.value for m in RetrievalModel}:
+            comparison_models = [RetrievalModel.BM25, RetrievalModel.HYBRID_PARALLEL]
+        else:
+            comparison_models = models
+        run_refinement_comparison(
+            dataset_name=args.dataset,
+            models=comparison_models,
+            top_k=args.top_k,
+            query_limit=args.query_limit,
+            output_path=Path(args.comparison_output),
+            use_api=args.use_api,
+        )
+    else:
+        run_evaluation(
+            dataset_name=args.dataset,
+            models=models,
+            top_k=args.top_k,
+            query_limit=args.query_limit,
+            output_path=Path(args.output),
+            use_api=args.use_api,
+            use_refinement=args.use_refinement,
+        )

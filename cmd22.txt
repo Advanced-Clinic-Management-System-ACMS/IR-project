@@ -27,5 +27,12 @@ py ui_gateway\main.py
 # Evaluation — ALL qrels queries (2076):
 py scripts\run_evaluation.py
 
+# Charts for report (from saved report.json):
+py scripts\plot_evaluation_charts.py
+
+# Before/after query refinement comparison:
+py scripts\run_evaluation.py --compare-refinement --query-limit 100
+py scripts\plot_evaluation_charts.py --comparison data\evaluation\refinement_comparison.json
+
 # Quick test:
 # py scripts\run_evaluation.py --query-limit 100
