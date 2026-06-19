@@ -97,6 +97,22 @@ def build_query_embedding_vector(
     return vector / norm if norm > 0 else vector
 
 
+_FAISS_INDEX_CACHE = {}
+
+def _get_faiss_index(embeddings: np.ndarray, cache_key: int):
+    """Retrieves or builds a highly optimized FAISS vector store index."""
+    import faiss
+    if cache_key not in _FAISS_INDEX_CACHE:
+        dimension = embeddings.shape[1]
+        # IndexFlatIP uses Inner Product (which equals Cosine Similarity for normalized vectors)
+        vector_store = faiss.IndexFlatIP(dimension)
+        # FAISS requires contiguous float32 arrays
+        vector_store.add(np.ascontiguousarray(embeddings, dtype=np.float32))
+        _FAISS_INDEX_CACHE[cache_key] = vector_store
+    return _FAISS_INDEX_CACHE[cache_key]
+# ---------------------------------------
+
+
 def score_embedding(
     query_tokens: list[str],
     embeddings: np.ndarray,
@@ -105,9 +121,23 @@ def score_embedding(
 ) -> dict[str, float]:
     if embeddings.size == 0 or not doc_ids:
         return {}
+        
     query_vector = build_query_embedding_vector(query_tokens, vocabulary)
-    doc_scores = embeddings @ query_vector
-    return {doc_id: float(score) for doc_id, score in zip(doc_ids, doc_scores)}
+    q_vec_2d = np.array([query_vector], dtype=np.float32)
+
+    # Use FAISS Vector Store instead of raw Numpy
+    cache_key = id(embeddings)
+    vector_store = _get_faiss_index(embeddings, cache_key)
+    
+    k = min(100, len(doc_ids))
+    scores, indices = vector_store.search(q_vec_2d, k)
+
+    results = {}
+    for score, idx in zip(scores[0], indices[0]):
+        if idx != -1:
+            results[doc_ids[idx]] = float(score)
+            
+    return results
 
 
 def score_embedding_semantic(
@@ -119,12 +149,26 @@ def score_embedding_semantic(
 ) -> dict[str, float]:
     if embeddings.size == 0 or not doc_ids:
         return {}
+        
     from retrieval_service.infrastructure.embedding_model import encode_text
 
     text = query_text.strip() or " ".join(query_tokens)
     query_vector = encode_text(text, model_name)
-    doc_scores = embeddings @ query_vector
-    return {doc_id: float(score) for doc_id, score in zip(doc_ids, doc_scores)}
+    q_vec_2d = np.array([query_vector], dtype=np.float32)
+
+    # Use FAISS Vector Store instead of raw Numpy
+    cache_key = id(embeddings)
+    vector_store = _get_faiss_index(embeddings, cache_key)
+    
+    k = min(100, len(doc_ids))
+    scores, indices = vector_store.search(q_vec_2d, k)
+
+    results = {}
+    for score, idx in zip(scores[0], indices[0]):
+        if idx != -1:
+            results[doc_ids[idx]] = float(score)
+            
+    return results
 
 
 def _embedding_scores(
