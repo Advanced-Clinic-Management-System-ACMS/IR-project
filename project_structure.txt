@@ -1,0 +1,98 @@
+IR-project
+├── docs
+│   └── ARCHITECTURE.md
+├── evaluation_service
+│   ├── api
+│   │   └── routes.py
+│   ├── core
+│   │   └── metrics.py
+│   ├── schemas
+│   │   └── payloads.py
+│   ├── services
+│   │   └── evaluator.py
+│   └── main.py
+├── indexing_service
+│   ├── api
+│   │   └── routes.py
+│   ├── core
+│   │   └── builder.py
+│   ├── infrastructure
+│   │   └── storage.py
+│   ├── services
+│   │   └── orchestrator.py
+│   └── main.py
+├── preprocessing_service
+│   ├── api
+│   │   └── routes.py
+│   ├── core
+│   │   └── nlp_engine.py
+│   ├── schemas
+│   │   └── payloads.py
+│   ├── services
+│   │   └── document_processor.py
+│   └── main.py
+├── query_refinement
+│   ├── api
+│   │   └── routes.py
+│   ├── core
+│   │   └── refiner.py
+│   ├── schemas
+│   │   └── payloads.py
+│   ├── services
+│   │   └── refinement_service.py
+│   └── main.py
+├── retrieval_service
+│   ├── api
+│   │   └── routes.py
+│   ├── core
+│   │   ├── strategies
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   ├── bm25_strategy.py
+│   │   │   ├── branching_strategy.py
+│   │   │   ├── embedding_strategy.py
+│   │   │   ├── parallel_strategy.py
+│   │   │   ├── serial_strategy.py
+│   │   │   └── tfidf_strategy.py
+│   │   ├── factory.py
+│   │   └── scoring.py
+│   ├── infrastructure
+│   │   ├── __init__.py
+│   │   ├── document_repo.py
+│   │   ├── embedding_model.py
+│   │   ├── index_repo.py
+│   │   ├── preprocess_client.py
+│   │   └── refinement_client.py
+│   ├── services
+│   │   ├── __init__.py
+│   │   └── engine.py
+│   └── main.py
+├── scripts
+│   ├── run_evaluation.py
+│   └── run_offline_pipeline.py
+├── shared
+│   ├── __init__.py
+│   ├── config.py
+│   ├── schemas.py
+│   └── windows_utf8.py
+├── ui_gateway
+│   ├── api
+│   │   └── routes.py
+│   ├── infrastructure
+│   │   └── backend_client.py
+│   ├── services
+│   │   └── orchestrator.py
+│   ├── templates
+│   │   └── index.html
+│   └── main.py
+├── .gitignore
+├── cmd22.txt
+├── evaluation.ipynb
+├── load_data.py
+├── main_test.py
+├── print_tree.py
+├── project_structure.txt
+├── README.md
+├── requirements.txt
+├── strcture.txt
+└── تقرير الطلب 2.docx

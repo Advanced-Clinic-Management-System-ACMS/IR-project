@@ -361,7 +361,15 @@
                 </div>
 
                 <div class="controls">
+                  <div class="field">
+                        <label>مجموعة البيانات (Dataset)</label>
+                        <select name="dataset_name">
+                            <option value="lotte_lifestyle" {% if dataset_name == 'lotte_lifestyle' %}selected{% endif %}>LoTTE Lifestyle</option>
+                            <option value="vaswani" {% if dataset_name == 'vaswani' %}selected{% endif %}>Vaswani</option>
+                        </select>
+                    </div>
                     <div class="field">
+                        
                         <label>نموذج الاسترجاع</label>
                         <select name="model">
                             <option value="tfidf" {% if model == 'tfidf' %}selected{% endif %}>TF-IDF</option>
@@ -390,7 +398,7 @@
                     </div>
                 </div>
 
-                <input type="hidden" name="dataset_name" value="{{ dataset_name }}">
+                
 
                 <div class="actions">
                     <label class="toggle">
