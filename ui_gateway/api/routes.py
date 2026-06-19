@@ -33,6 +33,7 @@ def build_page_context(**overrides) -> dict:
         "bm25_b": DEFAULT_BM25_B,
         "use_refinement": False,
         "dataset_name": DEFAULT_DATASET_NAME,
+        "user_history": "",
         "error": None,
         "results": [],
         "query_tokens": [],
@@ -67,6 +68,7 @@ async def search(
     bm25_b: float = Form(DEFAULT_BM25_B),
     use_refinement: str | None = Form(None),
     dataset_name: str = Form(DEFAULT_DATASET_NAME),
+    user_history: str = Form(""), # <--- ADD THIS LINE
 ) -> HTMLResponse:
     refinement_enabled = use_refinement == "true"
     search_context = await orchestrator.handle_search(
@@ -77,6 +79,7 @@ async def search(
         bm25_b=bm25_b,
         use_refinement=refinement_enabled,
         dataset_name=dataset_name,
+        user_history=user_history, # <--- ADD THIS LINE
     )
     return templates.TemplateResponse(
         request,

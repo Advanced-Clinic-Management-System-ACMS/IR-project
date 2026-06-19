@@ -24,11 +24,13 @@ class BackendAPIClient:
             response.raise_for_status()
             return response.json().get("tokens", [])
 
-    async def refine_query(self, query: str) -> str:
+    # Add 'history' to the arguments
+    async def refine_query(self, query: str, history: list[str] = None) -> str:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 f"{self.refinement_url}/refine",
-                json={"query": query, "history": []},
+                # Pass the history variable instead of []
+                json={"query": query, "history": history or []},
             )
             response.raise_for_status()
             return response.json().get("refined_query", query)

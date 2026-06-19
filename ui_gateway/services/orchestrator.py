@@ -23,6 +23,7 @@ class UIGatewayOrchestrator:
         bm25_b: float,
         use_refinement: bool,
         dataset_name: str = DEFAULT_DATASET_NAME,
+        user_history: str = "",
     ) -> dict:
         context = {
             "query": query,
@@ -32,6 +33,7 @@ class UIGatewayOrchestrator:
             "bm25_b": bm25_b,
             "use_refinement": use_refinement,
             "dataset_name": dataset_name,
+            "user_history": user_history,
             "error": None,
             "query_tokens": [],
             "refined_query": None,
@@ -42,7 +44,8 @@ class UIGatewayOrchestrator:
         try:
             model_enum = self._map_model_string(model_str)
             if use_refinement:
-                context["refined_query"] = await self.api_client.refine_query(query)
+               history_list = [h.strip() for h in user_history.split(",") if h.strip()]
+               context["refined_query"] = await self.api_client.refine_query(query, history=history_list)
 
             search_query = context["refined_query"] or query
             context["query_tokens"] = await self.api_client.get_processed_tokens(search_query)
