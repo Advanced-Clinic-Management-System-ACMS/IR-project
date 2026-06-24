@@ -1,8 +1,10 @@
-# IR Project - LoTTE (no MongoDB)
+# IR Project — professional setup (library_v2)
 
 cd "d:\five year\ir"
 py -m pip install -r requirements.txt
-py load_data.py
+
+# Install new libraries:
+# sklearn (TF-IDF), rank-bm25 (BM25), faiss-cpu (vector store), joblib (compressed indexes)
 
 # Terminal 1-4: backend services
 py preprocessing_service\main.py
@@ -10,29 +12,27 @@ py indexing_service\main.py
 py retrieval_service\main.py
 py query_refinement\main.py
 
-# Terminal 5: build FULL LoTTE corpus (268K docs — takes hours)
-py scripts\run_offline_pipeline.py --ir-datasets
+# ONE-TIME: migrate existing 268K corpus to new format (sklearn + rank_bm25 + FAISS + SQLite)
+# Reuses existing embeddings.npy — no re-encoding
+py scripts\migrate_to_library_v2.py
 
-# Resume if interrupted:
-# py scripts\run_offline_pipeline.py --ir-datasets --resume
+# OR full pipeline from scratch:
+# py scripts\run_offline_pipeline.py --ir-datasets
 
-# Quick test only:
-# py scripts\run_offline_pipeline.py --ir-datasets --limit 500
+# OR rebuild indexes only:
+# py scripts\run_offline_pipeline.py --ir-datasets --index-only
 
-# Terminal 6: UI
+# Terminal 5: UI
 py ui_gateway\main.py
 
 # Browser: http://127.0.0.1:8000
 
-# Evaluation — ALL qrels queries (2076):
+# Evaluation (all qrels):
 py scripts\run_evaluation.py
 
-# Charts for report (from saved report.json):
+# Charts:
 py scripts\plot_evaluation_charts.py
 
-# Before/after query refinement comparison:
+# Refinement comparison:
 py scripts\run_evaluation.py --compare-refinement --query-limit 100
 py scripts\plot_evaluation_charts.py --comparison data\evaluation\refinement_comparison.json
-
-# Quick test:
-# py scripts\run_evaluation.py --query-limit 100

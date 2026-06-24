@@ -56,7 +56,9 @@ class SearchRequest(BaseModel):
     bm25_k1: float | None = None
     bm25_b: float | None = None
     hybrid_weights: dict[str, float] | None = None
+    fusion_mode: str = "rrf"
     use_refinement: bool = False
+    user_history: list[str] = Field(default_factory=list)
 
 
 class SearchResultItem(BaseModel):
@@ -77,6 +79,8 @@ class SearchResponse(BaseModel):
     dataset_name: str | None = None
     query_tokens: list[str] = Field(default_factory=list)
     use_refinement: bool = False
+    personalization_applied: list[str] = Field(default_factory=list)
+    fusion_mode: str | None = None
 
 
 class HealthResponse(BaseModel):

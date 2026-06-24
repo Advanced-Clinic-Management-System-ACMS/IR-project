@@ -23,6 +23,7 @@ import requests
 
 from indexing_service.services.orchestrator import IndexingOrchestrator
 from shared.config import DATA_DIR, DEFAULT_IR_DATASET, PROCESSED_DIR, RAW_DIR, SERVICE_URLS
+from shared.document_db import DocumentDatabase
 from shared.schemas import DocumentInput, ProcessedDocument
 
 logging.basicConfig(
@@ -194,6 +195,7 @@ def run_pipeline(
 
             append_jsonl(raw_jsonl, [doc.model_dump() for doc in batch])
             append_jsonl(processed_jsonl, processed)
+            DocumentDatabase.upsert_documents(safe_name, batch)
             total_saved += len(batch)
             logger.info("Saved %s documents so far.", total_saved)
             batch = []
@@ -206,6 +208,7 @@ def run_pipeline(
                 sys.exit(1)
             append_jsonl(raw_jsonl, [doc.model_dump() for doc in batch])
             append_jsonl(processed_jsonl, processed)
+            DocumentDatabase.upsert_documents(safe_name, batch)
             total_saved += len(batch)
             logger.info("Saved %s documents so far.", total_saved)
     else:
@@ -213,6 +216,7 @@ def run_pipeline(
         processed = preprocess_batch(documents, batch_size)
         append_jsonl(raw_jsonl, [doc.model_dump() for doc in documents])
         append_jsonl(processed_jsonl, processed)
+        DocumentDatabase.upsert_documents(safe_name, documents)
         total_saved = len(documents)
 
     if total_saved == 0:

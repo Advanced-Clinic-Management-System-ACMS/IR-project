@@ -24,6 +24,10 @@ class UIGatewayOrchestrator:
         use_refinement: bool,
         dataset_name: str = DEFAULT_DATASET_NAME,
         user_history: str = "",
+        fusion_mode: str = "rrf",
+        weight_tfidf: float = 0.34,
+        weight_bm25: float = 0.33,
+        weight_embedding: float = 0.33,
     ) -> dict:
         context = {
             "query": query,
@@ -34,21 +38,22 @@ class UIGatewayOrchestrator:
             "use_refinement": use_refinement,
             "dataset_name": dataset_name,
             "user_history": user_history,
+            "fusion_mode": fusion_mode,
+            "weight_tfidf": weight_tfidf,
+            "weight_bm25": weight_bm25,
+            "weight_embedding": weight_embedding,
             "error": None,
             "query_tokens": [],
             "refined_query": None,
+            "personalization_applied": [],
+            "suggestions": [],
             "results": [],
             "elapsed_ms": None,
         }
 
         try:
             model_enum = self._map_model_string(model_str)
-            if use_refinement:
-               history_list = [h.strip() for h in user_history.split(",") if h.strip()]
-               context["refined_query"] = await self.api_client.refine_query(query, history=history_list)
-
-            search_query = context["refined_query"] or query
-            context["query_tokens"] = await self.api_client.get_processed_tokens(search_query)
+            history_list = [h.strip() for h in user_history.split(",") if h.strip()]
 
             search_req = SearchRequest(
                 query=query,
@@ -58,12 +63,20 @@ class UIGatewayOrchestrator:
                 bm25_k1=bm25_k1,
                 bm25_b=bm25_b,
                 use_refinement=use_refinement,
+                user_history=history_list,
+                fusion_mode=fusion_mode,
+                hybrid_weights={
+                    "tfidf": weight_tfidf,
+                    "bm25": weight_bm25,
+                    "embedding": weight_embedding,
+                },
             )
             search_response = await self.api_client.execute_search(search_req)
             context["results"] = search_response.results
             context["elapsed_ms"] = search_response.elapsed_ms
-            context["query_tokens"] = search_response.query_tokens or context["query_tokens"]
-            if search_response.original_query and search_response.query != search_response.original_query:
+            context["query_tokens"] = search_response.query_tokens
+            context["personalization_applied"] = search_response.personalization_applied
+            if search_response.query != query:
                 context["refined_query"] = search_response.query
 
         except httpx.HTTPStatusError as exc:

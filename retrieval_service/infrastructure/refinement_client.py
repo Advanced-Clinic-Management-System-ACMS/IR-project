@@ -13,7 +13,11 @@ class RefinementClient:
         self.base_url = base_url or SERVICE_URLS["query_refinement"]
         self.timeout = timeout
 
-    def refine_query(self, query_text: str, history: list[str] | None = None) -> str:
+    def refine_query(
+        self,
+        query_text: str,
+        history: list[str] | None = None,
+    ) -> tuple[str, list[str]]:
         response = requests.post(
             f"{self.base_url}/refine",
             json={"query": query_text, "history": history or []},
@@ -21,4 +25,7 @@ class RefinementClient:
         )
         response.raise_for_status()
         payload = response.json()
-        return payload.get("refined_query", query_text)
+        return (
+            payload.get("refined_query", query_text),
+            payload.get("personalization_applied", []),
+        )

@@ -361,27 +361,34 @@
                 </div>
 
                 <div class="controls">
-                  <div class="field">
-                        <label>مجموعة البيانات (Dataset)</label>
+                    <div class="field">
+                        <label>Dataset</label>
                         <select name="dataset_name">
-                            <option value="lotte_lifestyle" {% if dataset_name == 'lotte_lifestyle' %}selected{% endif %}>LoTTE Lifestyle</option>
-                            <option value="vaswani" {% if dataset_name == 'vaswani' %}selected{% endif %}>Vaswani</option>
+                            <option value="lotte_lifestyle_dev_forum" {% if dataset_name == 'lotte_lifestyle_dev_forum' %}selected{% endif %}>
+                                LoTTE Lifestyle Forum (268K)
+                            </option>
                         </select>
                     </div>
                     <div class="field">
-                        <label>سجل البحث السابق (Personalization)</label>
-                        <input type="text" name="user_history" placeholder="مثال: diet, fitness, health" value="{{ user_history }}">
+                        <label>سجل البحث (Personalization #16)</label>
+                        <input type="text" name="user_history" placeholder="cat food, vet visit, kitten health" value="{{ user_history }}">
                     </div>
                     <div class="field">
-                        
                         <label>نموذج الاسترجاع</label>
                         <select name="model">
-                            <option value="tfidf" {% if model == 'tfidf' %}selected{% endif %}>TF-IDF</option>
-                            <option value="bm25" {% if model == 'bm25' %}selected{% endif %}>BM25</option>
-                            <option value="embedding" {% if model == 'embedding' %}selected{% endif %}>Embedding</option>
+                            <option value="tfidf" {% if model == 'tfidf' %}selected{% endif %}>TF-IDF (sklearn)</option>
+                            <option value="bm25" {% if model == 'bm25' %}selected{% endif %}>BM25 (rank_bm25)</option>
+                            <option value="embedding" {% if model == 'embedding' %}selected{% endif %}>Embedding (FAISS)</option>
                             <option value="hybrid_serial" {% if model == 'hybrid_serial' %}selected{% endif %}>Hybrid Serial</option>
                             <option value="hybrid_parallel" {% if model == 'hybrid_parallel' %}selected{% endif %}>Hybrid Parallel</option>
                             <option value="hybrid_branching" {% if model == 'hybrid_branching' %}selected{% endif %}>Hybrid Branching</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Hybrid Fusion</label>
+                        <select name="fusion_mode">
+                            <option value="rrf" {% if fusion_mode == 'rrf' %}selected{% endif %}>RRF (Reciprocal Rank Fusion)</option>
+                            <option value="weighted" {% if fusion_mode == 'weighted' %}selected{% endif %}>Weighted Sum</option>
                         </select>
                     </div>
                     <div class="field">
@@ -399,6 +406,18 @@
                     <div class="field">
                         <label>BM25 b</label>
                         <input type="number" step="0.05" min="0" max="1" name="bm25_b" value="{{ bm25_b }}">
+                    </div>
+                    <div class="field">
+                        <label>Weight TF-IDF</label>
+                        <input type="number" step="0.05" min="0" max="1" name="weight_tfidf" value="{{ weight_tfidf }}">
+                    </div>
+                    <div class="field">
+                        <label>Weight BM25</label>
+                        <input type="number" step="0.05" min="0" max="1" name="weight_bm25" value="{{ weight_bm25 }}">
+                    </div>
+                    <div class="field">
+                        <label>Weight Embedding</label>
+                        <input type="number" step="0.05" min="0" max="1" name="weight_embedding" value="{{ weight_embedding }}">
                     </div>
                 </div>
 
@@ -423,9 +442,9 @@
                     <div>• Preprocessing → port 8001</div>
                     <div>• Retrieval → port 8003</div>
                     <div>• Query Refinement → port 8004</div>
-                    <div>• Index built via pipeline into data/indexes/</div>
-                    <div>• Raw text stored in data/raw/ and data/processed/</div>
-                    <div>• Command: <code>py scripts\run_offline_pipeline.py --ir-datasets --limit 500</code></div>
+                    <div>• Documents in SQLite: data/documents.db</div>
+                    <div>• Indexes: sklearn + rank_bm25 + offline FAISS</div>
+                    <div>• Rebuild: <code>py scripts\run_offline_pipeline.py --ir-datasets --index-only</code></div>
                 </div>
             </div>
         </section>
@@ -449,6 +468,10 @@
             <div class="info-box">استعلام محسّن: <strong>{{ refined_query }}</strong></div>
             {% endif %}
 
+            {% if personalization_applied %}
+            <div class="info-box">Personalization: <strong>{{ personalization_applied | join(', ') }}</strong></div>
+            {% endif %}
+
             {% if query_tokens %}
             <div class="tokens">
                 {% for token in query_tokens %}
@@ -468,7 +491,7 @@
                     {% if result.title %}
                     <div class="doc-title">{{ result.title }}</div>
                     {% endif %}
-                    <div class="doc-text">{{ result.text or result.snippet or "النص الأصلي غير موجود في ملفات data/raw أو data/processed." }}</div>
+                    <div class="doc-text">{{ result.text or result.snippet or "النص الأصلي غير موجود في SQLite documents.db" }}</div>
                 </article>
                 {% endfor %}
             {% else %}

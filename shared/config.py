@@ -6,10 +6,11 @@ RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 INDEX_DIR = DATA_DIR / "indexes"
 
-# File-based storage (no MongoDB):
-#   data/raw/<dataset>.json
-#   data/processed/<dataset>.json
-#   data/indexes/<dataset>/
+# Storage:
+#   data/documents.db          — SQLite original documents (online retrieval)
+#   data/raw/<dataset>.jsonl   — offline pipeline backup
+#   data/processed/<dataset>.jsonl
+#   data/indexes/<dataset>/    — compressed sklearn/rank_bm25/faiss artifacts
 
 DEFAULT_IR_DATASET = "lotte/lifestyle/dev/forum"
 DEFAULT_DATASET_NAME = "lotte_lifestyle_dev_forum"

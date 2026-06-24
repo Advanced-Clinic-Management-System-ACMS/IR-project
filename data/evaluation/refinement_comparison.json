@@ -1,0 +1,41 @@
+{
+  "dataset": "lotte/lifestyle/dev/forum",
+  "total_qrels_queries": 2076,
+  "evaluated_queries": 100,
+  "top_k": 10,
+  "comparison_type": "query_refinement_before_after",
+  "models": {
+    "bm25": {
+      "before": {
+        "MAP": 0.2608,
+        "Recall": 0.1624,
+        "PrecisionAt10": 0.105,
+        "nDCGAt10": 0.3237
+      },
+      "after": {
+        "MAP": 0.2603,
+        "Recall": 0.1416,
+        "PrecisionAt10": 0.087,
+        "nDCGAt10": 0.3182
+      },
+      "delta_MAP": -0.0005,
+      "delta_nDCGAt10": -0.0055
+    },
+    "hybrid_parallel": {
+      "before": {
+        "MAP": 0.3641,
+        "Recall": 0.2419,
+        "PrecisionAt10": 0.154,
+        "nDCGAt10": 0.4445
+      },
+      "after": {
+        "MAP": 0.3606,
+        "Recall": 0.2311,
+        "PrecisionAt10": 0.14,
+        "nDCGAt10": 0.4374
+      },
+      "delta_MAP": -0.0035,
+      "delta_nDCGAt10": -0.0071
+    }
+  }
+}

@@ -1,11 +1,12 @@
 """
-This file orchestrates the indexing use case.
-It acts as the intermediary between the core mathematical logic and the infrastructure layer,
-ensuring strict data flow and execution of the build process.
+Indexing orchestrator — builds library-based indexes and offline FAISS vector store.
 """
+from __future__ import annotations
+
 import json
 
 from shared.config import DEFAULT_EMBEDDING_MODEL, PROCESSED_DIR
+from shared.document_db import DocumentDatabase
 from shared.schemas import ProcessedDocument
 from indexing_service.core.builder import IndexBuilderCore
 from indexing_service.infrastructure.storage import IndexStorageAdapter
@@ -18,61 +19,75 @@ class IndexingOrchestrator:
             raise ValueError("No documents provided for indexing.")
 
         storage = IndexStorageAdapter(dataset_name)
+        stats = IndexBuilderCore.summary_stats(documents)
 
-        core_data = IndexBuilderCore.build_core_index(documents)
-        vocabulary = core_data["vocabulary"]
-        idf = core_data["idf"]
+        vectorizer, tfidf_matrix, tfidf_doc_ids = IndexBuilderCore.build_sklearn_tfidf(documents)
+        bm25_model, bm25_doc_ids = IndexBuilderCore.build_rank_bm25(documents)
 
-        tf_idf_vectors = IndexBuilderCore.build_tf_idf_vectors(documents, idf, vocabulary)
+        storage.save_joblib("tfidf_vectorizer.joblib", vectorizer)
+        storage.save_sparse_matrix("tfidf_matrix.npz", tfidf_matrix)
+        storage.save_json_gz("tfidf_doc_ids.json.gz", tfidf_doc_ids)
 
-        storage.save_json("inverted_index.json", core_data["inverted_index"])
-        storage.save_json("vocabulary.json", vocabulary)
-        storage.save_json("doc_lengths.json", core_data["doc_lengths"])
-        storage.save_json("idf.json", idf)
-        storage.save_json("bm25_stats.json", core_data["bm25_stats"])
-        storage.save_json("tf_idf_vectors.json", tf_idf_vectors)
+        storage.save_joblib("bm25_model.joblib", bm25_model)
+        storage.save_json_gz("bm25_doc_ids.json.gz", bm25_doc_ids)
 
-        embedding_type = "vocabulary_tfidf"
+        embedding_type = None
         embedding_model = None
+        current_ids = [doc.doc_id for doc in documents]
+
         if save_embeddings:
-            embeddings_path = storage.output_dir / "embeddings.npy"
-            doc_ids_path = storage.output_dir / "embedding_doc_ids.json"
-            current_ids = [doc.doc_id for doc in documents]
-            reuse_embeddings = (
-                embeddings_path.exists()
-                and doc_ids_path.exists()
-                and json.loads(doc_ids_path.read_text(encoding="utf-8")) == current_ids
-            )
-            if reuse_embeddings:
-                existing_metadata_path = storage.output_dir / "metadata.json"
-                if existing_metadata_path.exists():
-                    existing = json.loads(existing_metadata_path.read_text(encoding="utf-8"))
-                    embedding_model = existing.get("embedding_model", DEFAULT_EMBEDDING_MODEL)
+            embeddings_npz = storage.output_dir / "embeddings.npz"
+            doc_ids_gz = storage.output_dir / "embedding_doc_ids.json.gz"
+            faiss_path = storage.output_dir / "faiss.index"
+
+            reuse = False
+            if embeddings_npz.exists() and doc_ids_gz.exists() and faiss_path.exists():
+                with __import__("gzip").open(doc_ids_gz, "rt", encoding="utf-8") as handle:
+                    existing_ids = json.load(handle)
+                reuse = existing_ids == current_ids
+
+            if reuse:
+                embedding_type = "sentence_transformer"
+                meta_path = storage.output_dir / "metadata.json"
+                if meta_path.exists():
+                    embedding_model = json.loads(meta_path.read_text(encoding="utf-8")).get(
+                        "embedding_model", DEFAULT_EMBEDDING_MODEL
+                    )
                 else:
                     embedding_model = DEFAULT_EMBEDDING_MODEL
-                embedding_type = "sentence_transformer"
             else:
                 embeddings, embedding_model = IndexBuilderCore.build_sentence_embeddings(
                     documents, model_name=DEFAULT_EMBEDDING_MODEL
                 )
+                faiss_index = IndexBuilderCore.build_faiss_index(embeddings)
+                storage.save_embeddings_compressed("embeddings.npz", embeddings)
+                storage.save_json_gz("embedding_doc_ids.json.gz", current_ids)
+                storage.save_faiss_index(faiss_index)
                 embedding_type = "sentence_transformer"
-                storage.save_numpy("embeddings.npy", embeddings)
-                storage.save_json("embedding_doc_ids.json", current_ids)
 
-        processed_payload = [doc.model_dump() for doc in documents]
+        DocumentDatabase.upsert_from_processed(
+            dataset_name,
+            [doc.model_dump() for doc in documents],
+        )
+
         processed_jsonl = PROCESSED_DIR / f"{dataset_name}.jsonl"
         if not processed_jsonl.exists() and len(documents) <= 5000:
-            storage.save_processed_documents(processed_payload)
+            storage.save_processed_documents([doc.model_dump() for doc in documents])
 
         metadata = {
             "dataset_name": dataset_name,
-            "document_count": core_data["total_docs"],
-            "vocabulary_size": len(vocabulary),
-            "avg_doc_length": core_data["avg_doc_length"],
+            "document_count": stats["document_count"],
+            "vocabulary_size": stats["vocabulary_size"],
+            "avg_doc_length": stats["avg_doc_length"],
             "index_path": str(storage.output_dir),
+            "index_format": "library_v2",
+            "tfidf_library": "sklearn.TfidfVectorizer",
+            "bm25_library": "rank_bm25.BM25Okapi",
             "embedding_type": embedding_type,
             "embedding_model": embedding_model,
+            "vector_store": "faiss.IndexFlatIP" if save_embeddings else None,
+            "storage": "compressed_joblib_npz_gzip",
+            "documents_db": "sqlite:data/documents.db",
         }
         storage.save_json("metadata.json", metadata)
-
         return metadata

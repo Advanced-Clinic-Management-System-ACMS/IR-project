@@ -11,12 +11,4 @@ class BM25Strategy(RetrievalStrategy):
         b: float,
         weights: dict[str, float] | None = None,
     ) -> dict[str, float]:
-        return score_bm25(
-            query_tokens,
-            index_data["inverted_index"],
-            index_data["doc_lengths"],
-            index_data["avg_doc_length"],
-            index_data["idf"],
-            k1=k1,
-            b=b,
-        )
+        return score_bm25(query_tokens, index_data, k1=k1, b=b)

@@ -1,6 +1,5 @@
 """
-Core query reformulation: spelling correction and controlled synonym expansion (WordNet).
-Designed as a lightweight, explainable refinement layer — no ML model required.
+Core query reformulation: spelling correction, synonym expansion, and personalization.
 """
 from __future__ import annotations
 
@@ -14,27 +13,12 @@ class QueryRefinerCore:
 
     def __init__(self) -> None:
         self._common_typos = {
-            "teh": "the",
-            "adn": "and",
-            "taht": "that",
-            "recieve": "receive",
-            "informtion": "information",
-            "artifical": "artificial",
-            "retreival": "retrieval",
-            "serach": "search",
-            "retrival": "retrieval",
-            "serch": "search",
-            "qustion": "question",
-            "recomend": "recommend",
-            "recomendation": "recommendation",
-            "definately": "definitely",
-            "seperate": "separate",
-            "occured": "occurred",
-            "wht": "what",
-            "whats": "what",
-            "dont": "do not",
-            "doesnt": "does not",
-            "cant": "cannot",
+            "teh": "the", "adn": "and", "taht": "that", "recieve": "receive",
+            "informtion": "information", "artifical": "artificial", "retreival": "retrieval",
+            "serach": "search", "retrival": "retrieval", "serch": "search",
+            "qustion": "question", "recomend": "recommend", "definately": "definitely",
+            "seperate": "separate", "occured": "occurred", "wht": "what", "whats": "what",
+            "dont": "do not", "doesnt": "does not", "cant": "cannot",
         }
         self._ensure_nltk()
 
@@ -50,8 +34,7 @@ class QueryRefinerCore:
 
     @staticmethod
     def normalize_query(text: str) -> str:
-        text = re.sub(r"\s+", " ", text.strip())
-        return text
+        return re.sub(r"\s+", " ", text.strip())
 
     def tokenize_query(self, query: str) -> list[str]:
         normalized = self.normalize_query(query)
@@ -88,20 +71,16 @@ class QueryRefinerCore:
         expanded: list[str] = []
         seen: set[str] = set()
         added_synonyms = 0
-
         for token in tokens:
             lower = token.lower()
             if lower not in seen:
                 expanded.append(token)
                 seen.add(lower)
-
             if added_synonyms >= self.MAX_SYNONYMS_TOTAL:
                 continue
-
             synsets = wordnet.synsets(lower)
             if not synsets:
                 continue
-
             for lemma in synsets[0].lemmas()[:2]:
                 synonym = lemma.name().replace("_", " ").lower()
                 if synonym == lower or synonym in seen:
@@ -110,7 +89,6 @@ class QueryRefinerCore:
                 seen.add(synonym)
                 added_synonyms += 1
                 break
-
         return expanded
 
     def deduplicate_tokens(self, tokens: list[str]) -> list[str]:

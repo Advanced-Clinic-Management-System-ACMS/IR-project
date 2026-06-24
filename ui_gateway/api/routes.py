@@ -34,10 +34,16 @@ def build_page_context(**overrides) -> dict:
         "use_refinement": False,
         "dataset_name": DEFAULT_DATASET_NAME,
         "user_history": "",
+        "fusion_mode": "rrf",
+        "weight_tfidf": 0.34,
+        "weight_bm25": 0.33,
+        "weight_embedding": 0.33,
         "error": None,
         "results": [],
         "query_tokens": [],
         "refined_query": None,
+        "personalization_applied": [],
+        "suggestions": [],
         "elapsed_ms": None,
     }
     context.update(overrides)
@@ -68,7 +74,11 @@ async def search(
     bm25_b: float = Form(DEFAULT_BM25_B),
     use_refinement: str | None = Form(None),
     dataset_name: str = Form(DEFAULT_DATASET_NAME),
-    user_history: str = Form(""), # <--- ADD THIS LINE
+    user_history: str = Form(""),
+    fusion_mode: str = Form("rrf"),
+    weight_tfidf: float = Form(0.34),
+    weight_bm25: float = Form(0.33),
+    weight_embedding: float = Form(0.33),
 ) -> HTMLResponse:
     refinement_enabled = use_refinement == "true"
     search_context = await orchestrator.handle_search(
@@ -79,7 +89,11 @@ async def search(
         bm25_b=bm25_b,
         use_refinement=refinement_enabled,
         dataset_name=dataset_name,
-        user_history=user_history, # <--- ADD THIS LINE
+        user_history=user_history,
+        fusion_mode=fusion_mode,
+        weight_tfidf=weight_tfidf,
+        weight_bm25=weight_bm25,
+        weight_embedding=weight_embedding,
     )
     return templates.TemplateResponse(
         request,

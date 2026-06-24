@@ -1,14 +1,17 @@
 """
-Infrastructure adapter for reading pre-built indexes from disk.
-This is the only place in retrieval_service that touches index files.
+Load pre-built compressed indexes from disk at service startup / first query.
+FAISS and embedding model are loaded from disk — never built on first online query.
 """
 from __future__ import annotations
 
+import gzip
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
+import joblib
 import numpy as np
+from scipy.sparse import load_npz
 
 from shared.config import INDEX_DIR
 
@@ -17,15 +20,15 @@ from shared.config import INDEX_DIR
 class LoadedIndex:
     dataset_name: str
     index_path: Path
-    inverted_index: dict[str, dict[str, int]]
-    vocabulary: list[str]
-    doc_lengths: dict[str, int]
-    idf: dict[str, float]
-    tf_idf_vectors: dict[str, dict[str, float]]
-    avg_doc_length: float
-    total_docs: int
-    embeddings: np.ndarray | None
+    metadata: dict
+    tfidf_vectorizer: object
+    tfidf_matrix: object
+    tfidf_doc_ids: list[str]
+    bm25_model: object
+    bm25_doc_ids: list[str]
+    faiss_index: object | None
     embedding_doc_ids: list[str]
+    embedding_model: str | None
 
 
 class IndexRepository:
@@ -35,11 +38,10 @@ class IndexRepository:
         self.dataset_name = dataset_name
         self.index_dir = INDEX_DIR / dataset_name
 
-    def _read_json(self, filename: str):
-        path = self.index_dir / filename
-        if not path.exists():
-            raise FileNotFoundError(f"Missing index file: {path}")
-        return json.loads(path.read_text(encoding="utf-8"))
+    @staticmethod
+    def _read_json_gz(path: Path):
+        with gzip.open(path, "rt", encoding="utf-8") as handle:
+            return json.load(handle)
 
     def load(self) -> LoadedIndex:
         if self.dataset_name in self._cache:
@@ -48,46 +50,69 @@ class IndexRepository:
         if not self.index_dir.exists():
             raise FileNotFoundError(
                 f"Index not found for dataset '{self.dataset_name}' at {self.index_dir}. "
-                "Run scripts/run_offline_pipeline.py first."
+                "Run: py scripts/run_offline_pipeline.py --ir-datasets --index-only"
             )
 
-        metadata = self._read_json("metadata.json")
-        bm25_stats = self._read_json("bm25_stats.json")
-        embeddings = None
+        metadata_path = self.index_dir / "metadata.json"
+        if not metadata_path.exists():
+            raise FileNotFoundError(f"Missing metadata.json in {self.index_dir}")
+
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if metadata.get("index_format") != "library_v2":
+            raise FileNotFoundError(
+                "Index format outdated. Rebuild with: "
+                "py scripts/run_offline_pipeline.py --ir-datasets --index-only"
+            )
+
+        tfidf_vectorizer = joblib.load(self.index_dir / "tfidf_vectorizer.joblib")
+        tfidf_matrix = load_npz(self.index_dir / "tfidf_matrix.npz")
+        tfidf_doc_ids = self._read_json_gz(self.index_dir / "tfidf_doc_ids.json.gz")
+
+        bm25_model = joblib.load(self.index_dir / "bm25_model.joblib")
+        bm25_doc_ids = self._read_json_gz(self.index_dir / "bm25_doc_ids.json.gz")
+
+        faiss_index = None
         embedding_doc_ids: list[str] = []
-        embeddings_path = self.index_dir / "embeddings.npy"
-        if embeddings_path.exists():
-            embeddings = np.load(embeddings_path)
-            embedding_doc_ids = self._read_json("embedding_doc_ids.json")
+        embedding_model = metadata.get("embedding_model")
+        faiss_path = self.index_dir / "faiss.index"
+        doc_ids_path = self.index_dir / "embedding_doc_ids.json.gz"
+        if faiss_path.exists() and doc_ids_path.exists():
+            import faiss
+
+            faiss_index = faiss.read_index(str(faiss_path))
+            embedding_doc_ids = self._read_json_gz(doc_ids_path)
 
         loaded = LoadedIndex(
             dataset_name=self.dataset_name,
             index_path=self.index_dir,
-            inverted_index=self._read_json("inverted_index.json"),
-            vocabulary=self._read_json("vocabulary.json"),
-            doc_lengths=self._read_json("doc_lengths.json"),
-            idf=self._read_json("idf.json"),
-            tf_idf_vectors=self._read_json("tf_idf_vectors.json"),
-            avg_doc_length=float(bm25_stats.get("avg_doc_length", metadata.get("avg_doc_length", 1.0))),
-            total_docs=int(metadata.get("document_count", len(self._read_json("doc_lengths.json")))),
-            embeddings=embeddings,
+            metadata=metadata,
+            tfidf_vectorizer=tfidf_vectorizer,
+            tfidf_matrix=tfidf_matrix,
+            tfidf_doc_ids=tfidf_doc_ids,
+            bm25_model=bm25_model,
+            bm25_doc_ids=bm25_doc_ids,
+            faiss_index=faiss_index,
             embedding_doc_ids=embedding_doc_ids,
+            embedding_model=embedding_model,
         )
         self._cache[self.dataset_name] = loaded
         return loaded
 
-    def as_scoring_payload(self, loaded: LoadedIndex) -> dict:
-        metadata_path = self.index_dir / "metadata.json"
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8")) if metadata_path.exists() else {}
+    def as_scoring_payload(self, loaded: LoadedIndex, fusion_mode: str = "rrf") -> dict:
         return {
-            "inverted_index": loaded.inverted_index,
-            "vocabulary": loaded.vocabulary,
-            "doc_lengths": loaded.doc_lengths,
-            "idf": loaded.idf,
-            "tf_idf_vectors": loaded.tf_idf_vectors,
-            "avg_doc_length": loaded.avg_doc_length,
-            "embeddings": loaded.embeddings,
+            "tfidf_vectorizer": loaded.tfidf_vectorizer,
+            "tfidf_matrix": loaded.tfidf_matrix,
+            "tfidf_doc_ids": loaded.tfidf_doc_ids,
+            "bm25_model": loaded.bm25_model,
+            "bm25_doc_ids": loaded.bm25_doc_ids,
+            "faiss_index": loaded.faiss_index,
             "embedding_doc_ids": loaded.embedding_doc_ids,
-            "embedding_type": metadata.get("embedding_type", "vocabulary_tfidf"),
-            "embedding_model": metadata.get("embedding_model"),
+            "embedding_type": loaded.metadata.get("embedding_type"),
+            "embedding_model": loaded.embedding_model,
+            "fusion_mode": fusion_mode,
+            "total_docs": loaded.metadata.get("document_count", len(loaded.bm25_doc_ids)),
         }
+
+    @classmethod
+    def preload(cls, dataset_name: str) -> LoadedIndex:
+        return cls(dataset_name).load()

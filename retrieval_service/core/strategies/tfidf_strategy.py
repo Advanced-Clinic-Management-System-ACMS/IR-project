@@ -11,4 +11,4 @@ class TFIDFStrategy(RetrievalStrategy):
         b: float,
         weights: dict[str, float] | None = None,
     ) -> dict[str, float]:
-        return score_tfidf(query_tokens, index_data["tf_idf_vectors"], index_data["idf"])
+        return score_tfidf(query_tokens, index_data)
