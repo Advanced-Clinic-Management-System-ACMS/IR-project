@@ -1,16 +1,19 @@
 # تقرير مشروع نظام استرجاع المعلومات (IR 2026)
 
-> مسودة جاهزة للتسليم — أضف screenshots من UI والـ charts وGitHub link.
+**العنوان:** بناء Information Retrieval System  
+**Dataset:** `lotte/lifestyle/dev/forum` — 268,893 وثيقة | 2,076 qrels  
+**GitHub:** `[أضف رابط الريبو]`  
+**المجموعة:** `[5–7 أعضاء — املأ الأسماء في القسم 9]`
 
 ---
 
 ## 1. مقدمة
 
-تم بناء **نظام استرجاع معلومات (Information Retrieval System)** وفق متطلبات مقر IR 2026، باستخدام:
+تم بناء محرك بحث مخصص وفق متطلبات مقر IR 2026، باستخدام **Python + FastAPI + SOA + Clean Architecture**.  
+النظام يسترجع وثائق من **LoTTE Lifestyle Forum** ويدعم 6 نماذج تمثيل + ميزة إضافية **Personalization (#16)**.
 
-- **Dataset:** `lotte/lifestyle/dev/forum` من [ir-datasets](https://ir-datasets.com/lotte)
-- **268,893** وثيقة | **2,076** استعلام في qrels
-- **Python** + **FastAPI** + **SOA** + **Clean Architecture**
+> **ملاحظة Dataset:** المعرف الرسمي في ir-datasets هو `lotte/lifestyle/dev/forum`.  
+> المجلد المحلي `lotte_lifestyle_dev_forum` = نفس المجموعة بعد استبدال `/` بـ `_` لأسماء الملفات.
 
 ---
 
@@ -18,37 +21,31 @@
 
 | البند | القيمة |
 |--------|--------|
-| المصدر | ir-datasets |
-| المعرف | `lotte/lifestyle/dev/forum` |
-| عدد الوثائق | 268,893 |
-| Qrels queries | 2,076 |
-| التخزين المحلي | `data/raw/`, `data/processed/`, `data/indexes/` |
+| المصدر | [ir-datasets](https://ir-datasets.com/lotte) |
+| المعرف الرسمي | `lotte/lifestyle/dev/forum` |
+| المجلد المحلي | `lotte_lifestyle_dev_forum` |
+| عدد الوثائق | 268,893 (> 200K ✓) |
+| Qrels | 2,076 queries ✓ |
+| التحقق | `py load_data.py` |
 
-**Screenshot مطلوب:** مخرجات `py load_data.py` أو `metadata.json`.
+**Screenshot:** مخرجات `load_data.py` (doc count + qrels count).
 
 ---
 
-## 3. المعمارية (SOA)
-
-### الخدمات
+## 3. المعمارية (SOA — الطلب 7)
 
 | الخدمة | المنفذ | المسؤولية |
 |--------|--------|-----------|
-| ui_gateway | 8000 | واجهة المستخدم |
+| ui_gateway | 8000 | واجهة تجريبية |
 | preprocessing_service | 8001 | معالجة النصوص |
 | indexing_service | 8002 | بناء الفهرس |
 | retrieval_service | 8003 | البحث والترتيب |
-| query_refinement | 8004 | تحسين الاستعلام |
+| query_refinement | 8004 | تحسين الاستعلام + Personalization |
 | evaluation_service | 8005 | حساب المقاييس |
 
-**Screenshot مطلوب:** مخطط Mermaid من `docs/ARCHITECTURE.md`.
+**Screenshot:** مخطط Mermaid من `docs/ARCHITECTURE.md`.
 
-### Clean Architecture
-
-- **Core:** خوارزميات بحتة (TF-IDF, BM25, RRF, embeddings)
-- **Infrastructure:** قراءة الفهرس من القرص، HTTP clients
-- **Services:** orchestrators
-- **API:** FastAPI routes
+**Design Patterns:** Strategy + Factory في `retrieval_service/core/`.
 
 ---
 
@@ -58,13 +55,14 @@
 
 **الملف:** `preprocessing_service/core/nlp_engine.py`
 
-- Lowercasing
-- إزالة URLs، أرقام، punctuation
-- Tokenization (NLTK)
-- Stopword removal
-- Porter Stemming
+| الخطوة | التنفيذ |
+|--------|---------|
+| Normalization | lowercase، إزالة URLs/أرقام/punctuation |
+| Tokenization | NLTK `word_tokenize` |
+| Stopwords | NLTK English stopwords |
+| Stemming | **Porter Stemmer** (اخترنا Stemming وليس Lemmatization — مناسب لـ forum EN) |
 
-**Screenshot:** كود `nlp_engine.py` + tokens في UI.
+**Screenshot:** كود `stem_tokens()` + tokens في نتائج UI.
 
 ---
 
@@ -72,27 +70,27 @@
 
 | النموذج | التنفيذ | الملف |
 |---------|---------|-------|
-| TF-IDF | Cosine على sparse vectors | `tfidf_strategy.py` |
-| BM25 | probabilistic ranking | `bm25_strategy.py` |
-| Embedding | Sentence-BERT `all-MiniLM-L6-v2` | `embedding_strategy.py` |
-| Hybrid Serial | BM25 top-100 → embedding re-rank | `serial_strategy.py` |
-| Hybrid Parallel | TF-IDF + BM25 + Embedding → **RRF** | `parallel_strategy.py` |
-| Hybrid Branching | حسب طول الاستعلام | `branching_strategy.py` |
+| TF-IDF | sklearn `TfidfVectorizer` + cosine | `tfidf_strategy.py` |
+| BM25 | rank_bm25 `BM25Okapi` | `bm25_strategy.py` |
+| Embedding | Sentence-BERT `all-MiniLM-L6-v2` + FAISS | `embedding_strategy.py` |
+| Hybrid تسلسلي | BM25 top-100 → embedding re-rank | `serial_strategy.py` |
+| Hybrid متوازي | TF-IDF + BM25 + Embedding → RRF / Weighted | `parallel_strategy.py` |
+| Hybrid تفرعي | ≤2 tokens→BM25، ≤5→TF-IDF، else→Embedding | `branching_strategy.py` |
 
-**ملاحظة للمقابلة:** Embedding مبني على Sentence-BERT (عائلة BERT) — dense semantic vectors 384-d.
+**BM25 k1/b:** قابلة للتعديل من UI → تمرير إلى `score_bm25()`.
 
-**Design Pattern:** Strategy + Factory في `retrieval_service/core/factory.py`.
-
-**Screenshot:** UI مع اختيار BM25 k1/b + hybrid mode.
+**Screenshot:** UI — اختيار Hybrid + BM25 params + fusion mode.
 
 ---
 
 ### 4.3 Indexing (الطلب 3)
 
-- Inverted Index
-- TF-IDF vectors
-- BM25 statistics
-- Embeddings (`embeddings.npy`)
+- TF-IDF sparse matrix (sklearn)
+- BM25 corpus statistics (rank_bm25)
+- Sentence-BERT embeddings + FAISS index (offline)
+- SQLite `data/documents.db` للنص الأصلي
+
+> الفهرس المعكوس (Inverted Index) مبني **داخلياً** داخل sklearn و rank_bm25 — ليس ملفاً منفصلاً.
 
 **الأمر:** `py scripts/run_offline_pipeline.py --ir-datasets`
 
@@ -100,7 +98,9 @@
 
 ### 4.4 Query Processing (الطلب 4)
 
-نفس pipeline المعالجة للوثائق والاستعلامات عبر HTTP إلى preprocessing_service.
+نفس `NLPEngine` للوثائق والاستعلامات عبر HTTP:
+
+`retrieval_service` → `preprocess_client.py` → `/process-query`
 
 ---
 
@@ -109,107 +109,150 @@
 **الملف:** `query_refinement/core/refiner.py`
 
 - تصحيح إملاء (قاموس + WordNet)
-- توسيع مرادفات محدود (max 3 terms) لتجنب تشتيت الاستعلام
-- إزالة تكرار الكلمات
+- توسيع مرادفات (max 3 terms)
 
-**Screenshot:** UI مع تفعيل refinement + refined query.
+**تجربة مستقلة:** UI → وضع Extra → ✓ Query Refinement (بدون Personalization).
 
 ---
 
 ### 4.6 Matching & Ranking (الطلب 6)
 
-- TF-IDF / BM25 / cosine similarity للـ embeddings
-- ترتيب descending + Top-K
+- TF-IDF / BM25: dot product / probabilistic scores
+- Embedding: cosine via FAISS IndexFlatIP
+- Hybrid: serial re-rank أو RRF fusion
 
 ---
 
-### 4.7 SOA (الطلب 7)
+### 4.7 UI (الطلب 9)
 
-6 microservices مستقلة، Pydantic schemas في `shared/schemas.py`.
+- اختيار Dataset + النموذج + Top-K
+- BM25 k1/b + Hybrid fusion
+- **وضع Basic:** الطلبات الأساسية فقط
+- **وضع Extra:** Refinement و Personalization **بشكل مستقل** (checkbox منفصل لكل ميزة)
+
+**Screenshot:** Basic vs Extra + نتائج البحث.
 
 ---
 
-### 4.8 Evaluation (الطلب 8)
+## 5. الميزة الإضافية — Personalization (#16)
 
-**المقاييس:** MAP, Recall, Precision@10, nDCG@10  
-**الاستعلامات:** 2,076 / 2,076 (كل qrels)
+**الملف:** `query_refinement/core/personalization.py`
 
-#### نتائج النماذج (بدون refinement)
+| تقنية IR | الوصف |
+|----------|--------|
+| History term profile | توسيع الاستعلام بكلمات متكررة من سجل البحث |
+| Semantic history matching | cosine similarity مع أقرب استعلام سابق |
+
+**تجربة مستقلة:** UI → Extra → ✓ Personalization + سجل بحث (بدون Refinement).
+
+**Screenshot:** UI مع `personalization_applied` في النتائج.
+
+---
+
+## 6. Evaluation (الطلب 8) — **الأهم**
+
+### 6.1 Baseline — كل النماذج (2,076 queries)
 
 | Model | MAP | Recall | P@10 | nDCG@10 |
 |-------|-----|--------|------|---------|
 | tf_idf | 0.0132 | 0.0109 | 0.0033 | 0.0147 |
-| bm25 | 0.0148 | 0.0113 | 0.0034 | 0.0160 |
+| bm25 | **0.0148** | 0.0113 | 0.0034 | **0.0160** |
 | embedding | 0.0124 | 0.0090 | 0.0027 | 0.0135 |
 | hybrid_serial | 0.0125 | 0.0093 | 0.0028 | 0.0138 |
-| hybrid_parallel | **0.0138** | **0.0114** | **0.0034** | **0.0153** |
+| hybrid_parallel | 0.0138 | 0.0114 | 0.0034 | 0.0153 |
 | hybrid_branching | 0.0124 | 0.0103 | 0.0032 | 0.0138 |
 
-**Screenshot مطلوب:** Charts من `data/evaluation/charts/` (MAP, nDCG bar charts).
+**Charts:** `data/evaluation/charts/map_comparison.png`, `ndcg_comparison.png`
 
-**تفسير metrics:** القيم منخفضة نسبياً لكن متسقة عبر corpus كامل — domain forum informal + stemming. المقارنة بين النماذج أهم من القيمة المطلقة.
+**Screenshot:** Charts MAP + nDCG لكل النماذج.
 
-#### قبل / بعد Query Refinement
+**تفسير:** القيم متسقة على corpus كامل (268K forum informal). BM25 الأفضل lexical؛ hybrid_parallel قريب من الأعلى.
 
+---
+
+### 6.2 قبل / بعد Query Refinement
+
+**الأمر:**
 ```powershell
-py scripts\run_evaluation.py --compare-refinement --models bm25 hybrid_parallel
-py scripts\plot_evaluation_charts.py --comparison data/evaluation/refinement_comparison.json
+py scripts\run_evaluation.py --compare-refinement
+py scripts\plot_evaluation_charts.py --comparison data\evaluation\refinement_comparison.json
 ```
 
-**Screenshot:** `refinement_map.png` و `refinement_ndcg.png`.
+**Charts:** `refinement_map.png`, `refinement_ndcg.png`
+
+**Screenshot:** أعمدة before/after لـ MAP و nDCG.
+
+> Refinement قد لا يرفع MAP على qrels لأن ground truth مبني على نص الاستعلام الأصلي — Chart يوضح التأثير objectively.
 
 ---
 
-### 4.9 UI (الطلب 9)
+### 6.3 قبل / بعد Personalization (#16)
 
-- واجهة عربية RTL
-- اختيار النموذج، Top-K، BM25 params
-- Query refinement toggle
-- عرض tokens + النص الكامل
+**الأمر:**
+```powershell
+py scripts\run_evaluation.py --compare-personalization
+py scripts\plot_evaluation_charts.py --personalization-comparison data\evaluation\personalization_comparison.json
+```
 
-**Screenshot:** صفحة نتائج البحث.
+**Charts:** `personalization_map.png`, `personalization_ndcg.png`
+
+**سجل التقييم:** `DEFAULT_EVAL_HISTORY` في `shared/config.py`
 
 ---
 
-## 5. تشغيل النظام
+### 6.4 تشغيل كل التقييمات دفعة واحدة
+
+```powershell
+py scripts\run_evaluation.py
+py scripts\run_evaluation.py --compare-all-extras
+py scripts\plot_evaluation_charts.py --comparison data\evaluation\refinement_comparison.json --personalization-comparison data\evaluation\personalization_comparison.json
+```
+
+---
+
+## 7. تشغيل النظام
 
 ```powershell
 py preprocessing_service\main.py
-py indexing_service\main.py
 py retrieval_service\main.py
 py query_refinement\main.py
 py ui_gateway\main.py
 ```
 
+**Demo:** راجع `docs/DEMO.md` (عرض 12–15 دقيقة).
+
 ---
 
-## 6. GitHub
+## 8. GitHub
 
 - الرابط: `[أضف رابط الريبو]`
-- README: `README.md`
+- README: `README.md` — بنية الكود + name mapping
+- Indexes محلية: `py scripts/migrate_to_library_v2.py` أو pipeline
 
 ---
 
-## 7. تقسيم العمل (أعضاء المجموعة)
+## 9. تقسيم العمل
 
 | العضو | المسؤولية |
 |-------|-----------|
-| [الاسم] | Preprocessing + Indexing |
-| [الاسم] | Retrieval + Hybrid |
-| [الاسم] | Evaluation + Charts |
-| [الاسم] | UI + Demo |
-| [الاسم] | التقرير + GitHub |
+| `[الاسم 1]` | preprocessing_service + indexing_service |
+| `[الاسم 2]` | retrieval_service + Hybrid strategies |
+| `[الاسم 3]` | query_refinement + Personalization |
+| `[الاسم 4]` | evaluation + charts |
+| `[الاسم 5]` | ui_gateway + demo + تقرير |
+
+> كل عضو يجب أن يشرح **ملفاته** و**3 أسئلة** عنها في المقابلة الفردية.
 
 ---
 
-## 8. الخلاصة
+## 10. الخلاصة
 
-- نظام IR كامل end-to-end على LoTTE
-- SOA حقيقي مع 6 services
-- 6 نماذج استرجاع + 3 hybrid modes
-- Evaluation على كل qrels مع charts
-- Query refinement قابل للتجربة independently
+- نظام IR end-to-end على LoTTE (268,893 doc, 2076 qrels)
+- SOA: 6 services + Clean Architecture
+- 6 نماذج + Hybrid Serial / Parallel / Branching
+- Stemming (Porter) — مو Lemmatization
+- Personalization (#16) — ميزة إضافية قابلة للتجربة مستقلاً
+- Evaluation: MAP + nDCG charts + before/after extras
 
-**GitHub:** [رابط]  
-**Dataset:** lotte/lifestyle/dev/forum  
-**Corpus indexed:** 268,893 documents
+**Dataset ID:** `lotte/lifestyle/dev/forum`  
+**Local folder:** `lotte_lifestyle_dev_forum`

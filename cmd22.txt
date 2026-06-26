@@ -1,38 +1,43 @@
-# IR Project — professional setup (library_v2)
+# IR Project — تشغيل + تقييم + تسليم
 
 cd "d:\five year\ir"
 py -m pip install -r requirements.txt
 
-# Install new libraries:
-# sklearn (TF-IDF), rank-bm25 (BM25), faiss-cpu (vector store), joblib (compressed indexes)
-
-# Terminal 1-4: backend services
-py preprocessing_service\main.py
-py indexing_service\main.py
-py retrieval_service\main.py
-py query_refinement\main.py
-
-# ONE-TIME: migrate existing 268K corpus to new format (sklearn + rank_bm25 + FAISS + SQLite)
-# Reuses existing embeddings.npy — no re-encoding
-py scripts\migrate_to_library_v2.py
-
-# OR full pipeline from scratch:
-# py scripts\run_offline_pipeline.py --ir-datasets
-
-# OR rebuild indexes only:
-# py scripts\run_offline_pipeline.py --ir-datasets --index-only
-
-# Terminal 5: UI
-py ui_gateway\main.py
+# ===== 1) Services (4 terminals) =====
+py preprocessing_service\main.py      # 8001
+py retrieval_service\main.py          # 8003
+py query_refinement\main.py           # 8004
+py ui_gateway\main.py                 # 8000
 
 # Browser: http://127.0.0.1:8000
 
-# Evaluation (all qrels):
+# ===== 2) Verify dataset =====
+py load_data.py
+
+# ===== 3) Build indexes (once, if missing) =====
+# py scripts\migrate_to_library_v2.py
+# OR: py scripts\run_offline_pipeline.py --ir-datasets
+
+# ===== 4) Evaluation (Yaser: MAP + nDCG charts + before/after) =====
+
+# Baseline — all 6 models, 2076 queries
 py scripts\run_evaluation.py
 
-# Charts:
+# Baseline charts
 py scripts\plot_evaluation_charts.py
 
-# Refinement comparison:
-py scripts\run_evaluation.py --compare-refinement --query-limit 100
-py scripts\plot_evaluation_charts.py --comparison data\evaluation\refinement_comparison.json
+# Before/after extras (refinement + personalization #16)
+py scripts\run_evaluation.py --compare-all-extras
+
+# All charts
+py scripts\plot_evaluation_charts.py --comparison data\evaluation\refinement_comparison.json --personalization-comparison data\evaluation\personalization_comparison.json
+
+# Quick test only (NOT for report):
+# py scripts\run_evaluation.py --compare-all-extras --query-limit 100
+
+# ===== 5) Demo =====
+# See docs/DEMO.md
+
+# ===== Dataset name mapping =====
+# ir-datasets ID : lotte/lifestyle/dev/forum
+# local folder   : lotte_lifestyle_dev_forum

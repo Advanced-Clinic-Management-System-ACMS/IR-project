@@ -22,7 +22,12 @@ import requests
 
 from evaluation_service.schemas.payloads import EvaluateRequest
 from evaluation_service.services.evaluator import EvaluationService
-from shared.config import DEFAULT_DATASET_NAME, DEFAULT_IR_DATASET, SERVICE_URLS
+from shared.config import (
+    DEFAULT_DATASET_NAME,
+    DEFAULT_EVAL_HISTORY,
+    DEFAULT_IR_DATASET,
+    SERVICE_URLS,
+)
 from shared.schemas import RetrievalModel, SearchRequest
 
 
@@ -63,6 +68,8 @@ def retrieve(
     model: RetrievalModel,
     top_k: int,
     use_refinement: bool = False,
+    use_personalization: bool = False,
+    user_history: list[str] | None = None,
 ) -> list[str]:
     payload = SearchRequest(
         query=query_text,
@@ -70,6 +77,8 @@ def retrieve(
         top_k=top_k,
         dataset_name=DEFAULT_DATASET_NAME,
         use_refinement=use_refinement,
+        use_personalization=use_personalization,
+        user_history=user_history or [],
     )
     response = requests.post(
         f"{SERVICE_URLS['retrieval']}/search",
@@ -177,17 +186,19 @@ def run_evaluation(
     return payload
 
 
-def run_refinement_comparison(
+def run_before_after_comparison(
     dataset_name: str,
     models: list[RetrievalModel],
     top_k: int,
     query_limit: int | None,
     output_path: Path | None,
     use_api: bool,
+    comparison_type: str,
+    after_kwargs: dict,
 ) -> dict:
-    """Compare retrieval metrics before vs after query refinement (same queries)."""
     check_service("retrieval", SERVICE_URLS["retrieval"])
-    check_service("query_refinement", SERVICE_URLS["query_refinement"])
+    if after_kwargs.get("use_refinement") or after_kwargs.get("use_personalization"):
+        check_service("query_refinement", SERVICE_URLS["query_refinement"])
     evaluate_fn = evaluate_runs_api if use_api else evaluate_runs_local
 
     qrels = load_qrels(dataset_name)
@@ -197,10 +208,11 @@ def run_refinement_comparison(
         query_ids = query_ids[:query_limit]
 
     print("=" * 70)
-    print("REFINEMENT COMPARISON (before vs after)")
+    print(f"{comparison_type.upper()} COMPARISON (before vs after)")
     print(f"Dataset: {dataset_name}")
     print(f"Queries: {len(query_ids)}")
     print(f"Models: {[m.value for m in models]}")
+    print(f"After settings: {after_kwargs}")
     print("=" * 70)
 
     comparison: dict[str, dict] = {"models": {}}
@@ -212,8 +224,8 @@ def run_refinement_comparison(
             if idx % 25 == 0 or idx == 1:
                 print(f"  Query {idx}/{len(query_ids)}")
             text = queries[query_id]
-            run_before[query_id] = retrieve(text, model, top_k, use_refinement=False)
-            run_after[query_id] = retrieve(text, model, top_k, use_refinement=True)
+            run_before[query_id] = retrieve(text, model, top_k)
+            run_after[query_id] = retrieve(text, model, top_k, **after_kwargs)
 
         before_metrics = evaluate_fn({model.value: run_before}, qrels, top_k)[model.value]
         after_metrics = evaluate_fn({model.value: run_after}, qrels, top_k)[model.value]
@@ -237,7 +249,8 @@ def run_refinement_comparison(
         "total_qrels_queries": len(qrels),
         "evaluated_queries": len(query_ids),
         "top_k": top_k,
-        "comparison_type": "query_refinement_before_after",
+        "comparison_type": comparison_type,
+        "after_settings": after_kwargs,
         "models": comparison["models"],
     }
     if output_path:
@@ -245,6 +258,50 @@ def run_refinement_comparison(
         output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print(f"\nSaved comparison to {output_path}")
     return payload
+
+
+def run_refinement_comparison(
+    dataset_name: str,
+    models: list[RetrievalModel],
+    top_k: int,
+    query_limit: int | None,
+    output_path: Path | None,
+    use_api: bool,
+) -> dict:
+    return run_before_after_comparison(
+        dataset_name=dataset_name,
+        models=models,
+        top_k=top_k,
+        query_limit=query_limit,
+        output_path=output_path,
+        use_api=use_api,
+        comparison_type="query_refinement_before_after",
+        after_kwargs={"use_refinement": True},
+    )
+
+
+def run_personalization_comparison(
+    dataset_name: str,
+    models: list[RetrievalModel],
+    top_k: int,
+    query_limit: int | None,
+    output_path: Path | None,
+    use_api: bool,
+    history: list[str],
+) -> dict:
+    return run_before_after_comparison(
+        dataset_name=dataset_name,
+        models=models,
+        top_k=top_k,
+        query_limit=query_limit,
+        output_path=output_path,
+        use_api=use_api,
+        comparison_type="personalization_before_after",
+        after_kwargs={
+            "use_personalization": True,
+            "user_history": history,
+        },
+    )
 
 
 if __name__ == "__main__":
@@ -272,20 +329,36 @@ if __name__ == "__main__":
     parser.add_argument(
         "--compare-refinement",
         action="store_true",
-        help="Run before/after query refinement comparison (uses --models subset)",
+        help="Run before/after query refinement comparison",
+    )
+    parser.add_argument(
+        "--compare-personalization",
+        action="store_true",
+        help="Run before/after personalization comparison (Requirement #16)",
     )
     parser.add_argument(
         "--comparison-output",
         default="data/evaluation/refinement_comparison.json",
     )
+    parser.add_argument(
+        "--personalization-output",
+        default="data/evaluation/personalization_comparison.json",
+    )
+    parser.add_argument(
+        "--compare-all-extras",
+        action="store_true",
+        help="Run both refinement and personalization before/after comparisons",
+    )
     args = parser.parse_args()
     models = [RetrievalModel(name) for name in args.models]
 
-    if args.compare_refinement:
-        if set(args.models) == {m.value for m in RetrievalModel}:
-            comparison_models = [RetrievalModel.BM25, RetrievalModel.HYBRID_PARALLEL]
-        else:
-            comparison_models = models
+    comparison_models = (
+        [RetrievalModel.BM25, RetrievalModel.HYBRID_PARALLEL]
+        if set(args.models) == {m.value for m in RetrievalModel}
+        else models
+    )
+
+    if args.compare_all_extras:
         run_refinement_comparison(
             dataset_name=args.dataset,
             models=comparison_models,
@@ -293,6 +366,34 @@ if __name__ == "__main__":
             query_limit=args.query_limit,
             output_path=Path(args.comparison_output),
             use_api=args.use_api,
+        )
+        run_personalization_comparison(
+            dataset_name=args.dataset,
+            models=comparison_models,
+            top_k=args.top_k,
+            query_limit=args.query_limit,
+            output_path=Path(args.personalization_output),
+            use_api=args.use_api,
+            history=DEFAULT_EVAL_HISTORY,
+        )
+    elif args.compare_refinement:
+        run_refinement_comparison(
+            dataset_name=args.dataset,
+            models=comparison_models,
+            top_k=args.top_k,
+            query_limit=args.query_limit,
+            output_path=Path(args.comparison_output),
+            use_api=args.use_api,
+        )
+    elif args.compare_personalization:
+        run_personalization_comparison(
+            dataset_name=args.dataset,
+            models=comparison_models,
+            top_k=args.top_k,
+            query_limit=args.query_limit,
+            output_path=Path(args.personalization_output),
+            use_api=args.use_api,
+            history=DEFAULT_EVAL_HISTORY,
         )
     else:
         run_evaluation(

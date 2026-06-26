@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from shared.config import BASE_DIR, DEFAULT_BM25_B, DEFAULT_BM25_K1, DEFAULT_DATASET_NAME
+from shared.config import BASE_DIR, DEFAULT_BM25_B, DEFAULT_BM25_K1, DEFAULT_DATASET_NAME, DEFAULT_IR_DATASET
 from shared.schemas import HealthResponse
 from ui_gateway.services.orchestrator import UIGatewayOrchestrator
 
@@ -32,7 +32,10 @@ def build_page_context(**overrides) -> dict:
         "bm25_k1": DEFAULT_BM25_K1,
         "bm25_b": DEFAULT_BM25_B,
         "use_refinement": False,
+        "use_personalization": False,
+        "execution_mode": "basic",
         "dataset_name": DEFAULT_DATASET_NAME,
+        "ir_dataset_id": DEFAULT_IR_DATASET,
         "user_history": "",
         "fusion_mode": "rrf",
         "weight_tfidf": 0.34,
@@ -73,6 +76,8 @@ async def search(
     bm25_k1: float = Form(DEFAULT_BM25_K1),
     bm25_b: float = Form(DEFAULT_BM25_B),
     use_refinement: str | None = Form(None),
+    use_personalization: str | None = Form(None),
+    execution_mode: str = Form("basic"),
     dataset_name: str = Form(DEFAULT_DATASET_NAME),
     user_history: str = Form(""),
     fusion_mode: str = Form("rrf"),
@@ -80,7 +85,11 @@ async def search(
     weight_bm25: float = Form(0.33),
     weight_embedding: float = Form(0.33),
 ) -> HTMLResponse:
-    refinement_enabled = use_refinement == "true"
+    extra_mode = execution_mode == "extra"
+    refinement_enabled = extra_mode and use_refinement == "true"
+    personalization_enabled = extra_mode and use_personalization == "true"
+    history_value = user_history if extra_mode else ""
+
     search_context = await orchestrator.handle_search(
         query=query,
         model_str=model,
@@ -88,8 +97,10 @@ async def search(
         bm25_k1=bm25_k1,
         bm25_b=bm25_b,
         use_refinement=refinement_enabled,
+        use_personalization=personalization_enabled,
+        execution_mode=execution_mode,
         dataset_name=dataset_name,
-        user_history=user_history,
+        user_history=history_value,
         fusion_mode=fusion_mode,
         weight_tfidf=weight_tfidf,
         weight_bm25=weight_bm25,

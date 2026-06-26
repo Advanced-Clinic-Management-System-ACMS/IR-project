@@ -33,10 +33,12 @@ class RetrievalEngine:
         personalization_applied: list[str] = []
         history = request.user_history or []
 
-        if request.use_refinement or history:
+        if request.use_refinement or request.use_personalization:
             query_text, personalization_applied = self.refinement_client.refine_query(
                 request.query,
                 history=history,
+                use_refinement=request.use_refinement,
+                use_personalization=request.use_personalization,
             )
 
         query_tokens = self.preprocess_client.process_query(query_text)
@@ -83,4 +85,5 @@ class RetrievalEngine:
             use_refinement=request.use_refinement,
             personalization_applied=personalization_applied,
             fusion_mode=fusion_mode,
+            use_personalization=request.use_personalization,
         )

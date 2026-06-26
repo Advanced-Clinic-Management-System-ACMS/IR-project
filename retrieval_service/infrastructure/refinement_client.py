@@ -17,10 +17,17 @@ class RefinementClient:
         self,
         query_text: str,
         history: list[str] | None = None,
+        use_refinement: bool = True,
+        use_personalization: bool = False,
     ) -> tuple[str, list[str]]:
         response = requests.post(
             f"{self.base_url}/refine",
-            json={"query": query_text, "history": history or []},
+            json={
+                "query": query_text,
+                "history": history or [],
+                "use_refinement": use_refinement,
+                "use_personalization": use_personalization,
+            },
             timeout=self.timeout,
         )
         response.raise_for_status()

@@ -98,7 +98,7 @@ Metadata stored in `data/indexes/<dataset>/metadata.json`:
 
 ## Query refinement
 
-- Common typo dictionary + WordNet lemma expansion
+- Common typo dictionary + WordNet synonym expansion
 - Invoked when `use_refinement=true` on search request
 
 ## Evaluation metrics

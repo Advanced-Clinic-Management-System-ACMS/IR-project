@@ -32,7 +32,7 @@
 ```
 data/raw/<dataset>.jsonl          — النص الأصلي
 data/processed/<dataset>.jsonl    — tokens + original_text
-data/indexes/<dataset>/           — inverted_index, tf_idf, bm25, embeddings.npy
+data/indexes/<dataset>/           — tfidf, bm25, faiss, metadata (sklearn/rank_bm25 internal inverted index)
 ```
 
 retrieval_service — Strategy + Factory

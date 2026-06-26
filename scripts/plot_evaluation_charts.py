@@ -82,28 +82,33 @@ def plot_model_comparison(
 def plot_refinement_comparison(
     comparison: dict,
     output_dir: Path,
+    title_prefix: str = "",
 ) -> pd.DataFrame:
     output_dir.mkdir(parents=True, exist_ok=True)
     rows: list[dict] = []
     for model_name, pair in comparison["models"].items():
-        rows.append({"model": model_name, "refinement": "before", **pair["before"]})
-        rows.append({"model": model_name, "refinement": "after", **pair["after"]})
+        rows.append({"model": model_name, "phase": "before", **pair["before"]})
+        rows.append({"model": model_name, "phase": "after", **pair["after"]})
     df = pd.DataFrame(rows)
 
-    for metric, filename, ylabel in [
-        ("MAP", "refinement_map.png", "MAP"),
-        ("nDCGAt10", "refinement_ndcg.png", "nDCG@10"),
+    comparison_type = comparison.get("comparison_type", "before_after")
+    label = title_prefix or comparison_type.replace("_", " ").title()
+    prefix = "personalization" if "personalization" in comparison_type else "refinement"
+
+    for metric, filename_suffix, ylabel in [
+        ("MAP", f"{prefix}_map.png", "MAP"),
+        ("nDCGAt10", f"{prefix}_ndcg.png", "nDCG@10"),
     ]:
-        pivot = df.pivot(index="model", columns="refinement", values=metric)
+        pivot = df.pivot(index="model", columns="phase", values=metric)
         fig, ax = plt.subplots(figsize=(9, 5))
         pivot.plot(kind="bar", ax=ax, color=["#E45756", "#54A24B"])
         ax.set_ylabel(ylabel)
         ax.set_xlabel("Model")
-        ax.set_title(f"Query Refinement Impact — {ylabel}")
+        ax.set_title(f"{label} — {ylabel}")
         ax.tick_params(axis="x", rotation=0)
-        ax.legend(title="Refinement")
+        ax.legend(title="Phase")
         fig.tight_layout()
-        fig.savefig(output_dir / filename, dpi=150)
+        fig.savefig(output_dir / filename_suffix, dpi=150)
         plt.close(fig)
 
     return df
@@ -115,6 +120,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot evaluation charts from JSON reports.")
     parser.add_argument("--report", default="data/evaluation/report.json")
     parser.add_argument("--comparison", default=None, help="refinement_comparison.json path")
+    parser.add_argument(
+        "--personalization-comparison",
+        default=None,
+        help="personalization_comparison.json path",
+    )
     parser.add_argument("--output", default="data/evaluation/charts")
     args = parser.parse_args()
 
@@ -125,8 +135,9 @@ if __name__ == "__main__":
         print(df)
         print(f"Saved charts to {args.output}/")
 
-    if args.comparison:
-        comp_path = Path(args.comparison)
-        if comp_path.exists():
-            plot_refinement_comparison(load_report(comp_path), Path(args.output))
-            print(f"Saved refinement charts to {args.output}/")
+    for comp_arg in (args.comparison, args.personalization_comparison):
+        if comp_arg:
+            comp_path = Path(comp_arg)
+            if comp_path.exists():
+                plot_refinement_comparison(load_report(comp_path), Path(args.output))
+                print(f"Saved comparison charts from {comp_path} to {args.output}/")

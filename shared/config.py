@@ -15,6 +15,13 @@ INDEX_DIR = DATA_DIR / "indexes"
 DEFAULT_IR_DATASET = "lotte/lifestyle/dev/forum"
 DEFAULT_DATASET_NAME = "lotte_lifestyle_dev_forum"
 
+# Fixed session history used in personalization evaluation (Requirement #16).
+DEFAULT_EVAL_HISTORY = [
+    "cat health food nutrition",
+    "vet visit kitten symptoms",
+    "pet grooming advice forum",
+]
+
 SERVICE_PORTS = {
     "preprocessing": 8001,
     "indexing": 8002,

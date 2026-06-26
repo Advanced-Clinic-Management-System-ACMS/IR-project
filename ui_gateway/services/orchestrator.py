@@ -3,7 +3,7 @@ UI request orchestrator.
 """
 from __future__ import annotations
 
-from shared.config import DEFAULT_BM25_B, DEFAULT_BM25_K1, DEFAULT_DATASET_NAME
+from shared.config import DEFAULT_BM25_B, DEFAULT_BM25_K1, DEFAULT_DATASET_NAME, DEFAULT_IR_DATASET
 from shared.schemas import RetrievalModel, SearchRequest
 from ui_gateway.infrastructure.backend_client import BackendAPIClient
 
@@ -22,6 +22,8 @@ class UIGatewayOrchestrator:
         bm25_k1: float,
         bm25_b: float,
         use_refinement: bool,
+        use_personalization: bool = False,
+        execution_mode: str = "basic",
         dataset_name: str = DEFAULT_DATASET_NAME,
         user_history: str = "",
         fusion_mode: str = "rrf",
@@ -36,7 +38,10 @@ class UIGatewayOrchestrator:
             "bm25_k1": bm25_k1,
             "bm25_b": bm25_b,
             "use_refinement": use_refinement,
+            "use_personalization": use_personalization,
+            "execution_mode": execution_mode,
             "dataset_name": dataset_name,
+            "ir_dataset_id": DEFAULT_IR_DATASET,
             "user_history": user_history,
             "fusion_mode": fusion_mode,
             "weight_tfidf": weight_tfidf,
@@ -63,6 +68,7 @@ class UIGatewayOrchestrator:
                 bm25_k1=bm25_k1,
                 bm25_b=bm25_b,
                 use_refinement=use_refinement,
+                use_personalization=use_personalization,
                 user_history=history_list,
                 fusion_mode=fusion_mode,
                 hybrid_weights={

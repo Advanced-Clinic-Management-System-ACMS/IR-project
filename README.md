@@ -92,8 +92,15 @@ Production path: `retrieval_service/core/factory.py` → `core/strategies/` → 
 
 ```powershell
 py scripts\run_evaluation.py
-jupyter notebook evaluation.ipynb
+py scripts\plot_evaluation_charts.py
+
+# Before/after extras (refinement + personalization #16)
+py scripts\run_evaluation.py --compare-all-extras
+py scripts\plot_evaluation_charts.py --comparison data\evaluation\refinement_comparison.json --personalization-comparison data\evaluation\personalization_comparison.json
 ```
+
+See `docs/DEMO.md` for the 12-minute interview script.  
+See `docs/REPORT_AR.md` for the Arabic delivery report.
 
 Use `--query-limit 100` only for quick local testing.
 
