@@ -4,9 +4,14 @@
   "evaluated_queries": 2076,
   "top_k": 10,
   "workers": 1,
-  "comparison_type": "query_refinement_before_after",
+  "comparison_type": "personalization_before_after",
   "after_settings": {
-    "use_refinement": true
+    "use_personalization": true,
+    "user_history": [
+      "cat health food nutrition",
+      "vet visit kitten symptoms",
+      "pet grooming advice forum"
+    ]
   },
   "models": {
     "bm25": {
@@ -17,13 +22,13 @@
         "nDCGAt10": 0.3923
       },
       "after": {
-        "MAP": 0.2824,
-        "Recall": 0.1928,
-        "PrecisionAt10": 0.1034,
-        "nDCGAt10": 0.3517
+        "MAP": 0.2189,
+        "Recall": 0.1383,
+        "PrecisionAt10": 0.0706,
+        "nDCGAt10": 0.2696
       },
-      "delta_MAP": -0.0352,
-      "delta_nDCGAt10": -0.0406
+      "delta_MAP": -0.0987,
+      "delta_nDCGAt10": -0.1227
     },
     "hybrid_parallel": {
       "before": {
@@ -33,13 +38,13 @@
         "nDCGAt10": 0.4915
       },
       "after": {
-        "MAP": 0.3723,
-        "Recall": 0.2639,
-        "PrecisionAt10": 0.143,
-        "nDCGAt10": 0.4545
+        "MAP": 0.3055,
+        "Recall": 0.2059,
+        "PrecisionAt10": 0.1082,
+        "nDCGAt10": 0.3705
       },
-      "delta_MAP": -0.0332,
-      "delta_nDCGAt10": -0.037
+      "delta_MAP": -0.1,
+      "delta_nDCGAt10": -0.121
     }
   }
 }

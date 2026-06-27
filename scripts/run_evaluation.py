@@ -1,19 +1,23 @@
 """
 Run IR evaluation against LoTTE qrels using the retrieval service.
 Prints query counts and metrics for each retrieval model.
+
+Uses multithreaded retrieval (HTTP I/O) to speed up full 2076-query runs.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 if sys.platform == "win32" and not sys.flags.utf8_mode:
-    import os
+    import subprocess
 
-    os.execv(sys.executable, [sys.executable, "-X", "utf8", *sys.argv])
+    raise SystemExit(subprocess.call([sys.executable, "-X", "utf8", *sys.argv]))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -30,10 +34,13 @@ from shared.config import (
 )
 from shared.schemas import RetrievalModel, SearchRequest
 
+DEFAULT_EVAL_WORKERS = 1
+SERVICE_HEALTH_TIMEOUT = 120
 
-def check_service(name: str, url: str) -> None:
+
+def check_service(name: str, url: str, timeout: int = SERVICE_HEALTH_TIMEOUT) -> None:
     try:
-        response = requests.get(f"{url}/health", timeout=5)
+        response = requests.get(f"{url}/health", timeout=timeout)
         response.raise_for_status()
     except requests.RequestException as exc:
         raise SystemExit(
@@ -70,6 +77,7 @@ def retrieve(
     use_refinement: bool = False,
     use_personalization: bool = False,
     user_history: list[str] | None = None,
+    max_retries: int = 3,
 ) -> list[str]:
     payload = SearchRequest(
         query=query_text,
@@ -80,13 +88,78 @@ def retrieve(
         use_personalization=use_personalization,
         user_history=user_history or [],
     )
-    response = requests.post(
-        f"{SERVICE_URLS['retrieval']}/search",
-        json=payload.model_dump(mode="json"),
-        timeout=120,
-    )
-    response.raise_for_status()
-    return [item["doc_id"] for item in response.json()["results"]]
+    last_error: Exception | None = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.post(
+                f"{SERVICE_URLS['retrieval']}/search",
+                json=payload.model_dump(mode="json"),
+                timeout=120,
+            )
+            response.raise_for_status()
+            return [item["doc_id"] for item in response.json()["results"]]
+        except requests.RequestException as exc:
+            last_error = exc
+            detail = ""
+            if hasattr(exc, "response") and exc.response is not None:
+                detail = exc.response.text[:300]
+            print(
+                f"  [retry {attempt}/{max_retries}] retrieval failed: {exc} {detail}",
+                flush=True,
+            )
+            if attempt < max_retries:
+                import time
+
+                time.sleep(5 * attempt)
+    raise last_error  # type: ignore[misc]
+
+
+def _retrieve_task(
+    query_id: str,
+    query_text: str,
+    model: RetrievalModel,
+    top_k: int,
+    retrieve_kwargs: dict,
+) -> tuple[str, list[str]]:
+    doc_ids = retrieve(query_text, model, top_k, **retrieve_kwargs)
+    return query_id, doc_ids
+
+
+def build_run_parallel(
+    query_ids: list[str],
+    queries: dict[str, str],
+    model: RetrievalModel,
+    top_k: int,
+    workers: int,
+    retrieve_kwargs: dict | None = None,
+    progress_label: str = "",
+) -> dict[str, list[str]]:
+    retrieve_kwargs = retrieve_kwargs or {}
+    run: dict[str, list[str]] = {}
+    total = len(query_ids)
+    completed = 0
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(
+                _retrieve_task,
+                query_id,
+                queries[query_id],
+                model,
+                top_k,
+                retrieve_kwargs,
+            ): query_id
+            for query_id in query_ids
+        }
+        for future in as_completed(futures):
+            query_id, doc_ids = future.result()
+            run[query_id] = doc_ids
+            completed += 1
+            if completed == 1 or completed % 50 == 0 or completed == total:
+                prefix = f"{progress_label} " if progress_label else ""
+                print(f"  {prefix}Query {completed}/{total}")
+
+    return run
 
 
 def evaluate_runs_local(
@@ -122,6 +195,7 @@ def run_evaluation(
     output_path: Path | None,
     use_api: bool,
     use_refinement: bool = False,
+    workers: int = DEFAULT_EVAL_WORKERS,
 ) -> dict:
     check_service("retrieval", SERVICE_URLS["retrieval"])
     if use_api:
@@ -143,17 +217,21 @@ def run_evaluation(
     print(f"Total queries in qrels file: {len(qrels)}")
     print(f"Queries used in this evaluation run: {len(query_ids)}")
     print(f"Top-K: {top_k}")
+    print(f"Parallel workers: {workers}")
     print(f"Query refinement: {'ON' if use_refinement else 'OFF'}")
     print("=" * 70)
 
     all_metrics: dict[str, dict[str, float]] = {}
     for model in models:
         print(f"\nRunning model: {model.value}")
-        run: dict[str, list[str]] = {}
-        for idx, query_id in enumerate(query_ids, start=1):
-            if idx % 25 == 0 or idx == 1:
-                print(f"  Query {idx}/{len(query_ids)}")
-            run[query_id] = retrieve(queries[query_id], model, top_k, use_refinement)
+        run = build_run_parallel(
+            query_ids=query_ids,
+            queries=queries,
+            model=model,
+            top_k=top_k,
+            workers=workers,
+            retrieve_kwargs={"use_refinement": use_refinement},
+        )
 
         metrics = evaluate_fn({model.value: run}, qrels, top_k)[model.value]
         all_metrics[model.value] = metrics
@@ -176,6 +254,7 @@ def run_evaluation(
         "total_qrels_queries": len(qrels),
         "evaluated_queries": len(query_ids),
         "top_k": top_k,
+        "workers": workers,
         "use_refinement": use_refinement,
         "metrics": all_metrics,
     }
@@ -195,6 +274,7 @@ def run_before_after_comparison(
     use_api: bool,
     comparison_type: str,
     after_kwargs: dict,
+    workers: int = DEFAULT_EVAL_WORKERS,
 ) -> dict:
     check_service("retrieval", SERVICE_URLS["retrieval"])
     if after_kwargs.get("use_refinement") or after_kwargs.get("use_personalization"):
@@ -211,21 +291,32 @@ def run_before_after_comparison(
     print(f"{comparison_type.upper()} COMPARISON (before vs after)")
     print(f"Dataset: {dataset_name}")
     print(f"Queries: {len(query_ids)}")
+    print(f"Parallel workers: {workers}")
     print(f"Models: {[m.value for m in models]}")
     print(f"After settings: {after_kwargs}")
     print("=" * 70)
 
     comparison: dict[str, dict] = {"models": {}}
     for model in models:
-        print(f"\nModel: {model.value}")
-        run_before: dict[str, list[str]] = {}
-        run_after: dict[str, list[str]] = {}
-        for idx, query_id in enumerate(query_ids, start=1):
-            if idx % 25 == 0 or idx == 1:
-                print(f"  Query {idx}/{len(query_ids)}")
-            text = queries[query_id]
-            run_before[query_id] = retrieve(text, model, top_k)
-            run_after[query_id] = retrieve(text, model, top_k, **after_kwargs)
+        print(f"\nModel: {model.value} — BEFORE (baseline)")
+        run_before = build_run_parallel(
+            query_ids=query_ids,
+            queries=queries,
+            model=model,
+            top_k=top_k,
+            workers=workers,
+            progress_label="before",
+        )
+        print(f"Model: {model.value} — AFTER ({comparison_type})")
+        run_after = build_run_parallel(
+            query_ids=query_ids,
+            queries=queries,
+            model=model,
+            top_k=top_k,
+            workers=workers,
+            retrieve_kwargs=after_kwargs,
+            progress_label="after",
+        )
 
         before_metrics = evaluate_fn({model.value: run_before}, qrels, top_k)[model.value]
         after_metrics = evaluate_fn({model.value: run_after}, qrels, top_k)[model.value]
@@ -249,6 +340,7 @@ def run_before_after_comparison(
         "total_qrels_queries": len(qrels),
         "evaluated_queries": len(query_ids),
         "top_k": top_k,
+        "workers": workers,
         "comparison_type": comparison_type,
         "after_settings": after_kwargs,
         "models": comparison["models"],
@@ -267,6 +359,7 @@ def run_refinement_comparison(
     query_limit: int | None,
     output_path: Path | None,
     use_api: bool,
+    workers: int = DEFAULT_EVAL_WORKERS,
 ) -> dict:
     return run_before_after_comparison(
         dataset_name=dataset_name,
@@ -277,6 +370,7 @@ def run_refinement_comparison(
         use_api=use_api,
         comparison_type="query_refinement_before_after",
         after_kwargs={"use_refinement": True},
+        workers=workers,
     )
 
 
@@ -288,6 +382,7 @@ def run_personalization_comparison(
     output_path: Path | None,
     use_api: bool,
     history: list[str],
+    workers: int = DEFAULT_EVAL_WORKERS,
 ) -> dict:
     return run_before_after_comparison(
         dataset_name=dataset_name,
@@ -301,6 +396,7 @@ def run_personalization_comparison(
             "use_personalization": True,
             "user_history": history,
         },
+        workers=workers,
     )
 
 
@@ -308,8 +404,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate retrieval models on LoTTE qrels.")
     parser.add_argument("--dataset", default=DEFAULT_IR_DATASET)
     parser.add_argument("--top-k", type=int, default=10)
-    parser.add_argument("--query-limit", type=int, default=None, help="Use all qrels queries if omitted")
+    parser.add_argument(
+        "--query-limit",
+        type=int,
+        default=None,
+        help="Use all qrels queries if omitted (2076 for LoTTE lifestyle forum)",
+    )
     parser.add_argument("--output", default="data/evaluation/report.json")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_EVAL_WORKERS,
+        help="Parallel threads for retrieval HTTP calls",
+    )
     parser.add_argument(
         "--use-api",
         action="store_true",
@@ -366,6 +473,7 @@ if __name__ == "__main__":
             query_limit=args.query_limit,
             output_path=Path(args.comparison_output),
             use_api=args.use_api,
+            workers=args.workers,
         )
         run_personalization_comparison(
             dataset_name=args.dataset,
@@ -375,6 +483,7 @@ if __name__ == "__main__":
             output_path=Path(args.personalization_output),
             use_api=args.use_api,
             history=DEFAULT_EVAL_HISTORY,
+            workers=args.workers,
         )
     elif args.compare_refinement:
         run_refinement_comparison(
@@ -384,6 +493,7 @@ if __name__ == "__main__":
             query_limit=args.query_limit,
             output_path=Path(args.comparison_output),
             use_api=args.use_api,
+            workers=args.workers,
         )
     elif args.compare_personalization:
         run_personalization_comparison(
@@ -394,6 +504,7 @@ if __name__ == "__main__":
             output_path=Path(args.personalization_output),
             use_api=args.use_api,
             history=DEFAULT_EVAL_HISTORY,
+            workers=args.workers,
         )
     else:
         run_evaluation(
@@ -404,4 +515,5 @@ if __name__ == "__main__":
             output_path=Path(args.output),
             use_api=args.use_api,
             use_refinement=args.use_refinement,
+            workers=args.workers,
         )

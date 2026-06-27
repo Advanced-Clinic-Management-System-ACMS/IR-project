@@ -5,6 +5,7 @@ Safe to run without re-evaluating — reads existing report files only.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -141,3 +142,8 @@ if __name__ == "__main__":
             if comp_path.exists():
                 plot_refinement_comparison(load_report(comp_path), Path(args.output))
                 print(f"Saved comparison charts from {comp_path} to {args.output}/")
+
+    summary_script = Path(__file__).resolve().parent / "generate_eval_summary.py"
+    if summary_script.exists():
+        import subprocess
+        subprocess.run([sys.executable, str(summary_script)], check=False)

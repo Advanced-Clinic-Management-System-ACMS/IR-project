@@ -14,7 +14,7 @@ Python search engine with **Service-Oriented Architecture (SOA)** and **Clean Ar
 | Processed tokens | `data/processed/lotte_lifestyle_dev_forum.jsonl` |
 | Indexes (TF-IDF, BM25, Sentence-BERT embeddings) | `data/indexes/lotte_lifestyle_dev_forum/` |
 
-At **query time**, retrieval reads the **index from disk** and **original text from local JSONL/JSON files**.
+At **query time**, retrieval reads **compressed indexes from disk** and **original document text from SQLite** (`data/documents.db`).
 
 ## Services
 
@@ -91,18 +91,19 @@ Production path: `retrieval_service/core/factory.py` → `core/strategies/` → 
 ## Evaluation (all 2076 qrels queries)
 
 ```powershell
-py scripts\run_evaluation.py
-py scripts\plot_evaluation_charts.py
+# Full pipeline (multithreaded retrieval, interview-ready outputs)
+powershell -ExecutionPolicy Bypass -File scripts\run_full_report_eval.ps1
 
-# Before/after extras (refinement + personalization #16)
-py scripts\run_evaluation.py --compare-all-extras
+# Or manual:
+py scripts\run_evaluation.py --workers 6
+py scripts\run_evaluation.py --compare-all-extras --workers 6
 py scripts\plot_evaluation_charts.py --comparison data\evaluation\refinement_comparison.json --personalization-comparison data\evaluation\personalization_comparison.json
+py scripts\generate_eval_summary.py
 ```
 
-See `docs/DEMO.md` for the 12-minute interview script.  
-See `docs/REPORT_AR.md` for the Arabic delivery report.
+Interview-ready outputs: `data/evaluation/EVALUATION_SUMMARY.md` + `data/evaluation/charts/*.png`
 
-Use `--query-limit 100` only for quick local testing.
+Use `--query-limit 100` only for quick local testing — never in the report.
 
 ## Name mapping
 

@@ -3,7 +3,7 @@ Web routes for the UI gateway.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Cookie, Form, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -14,6 +14,10 @@ from ui_gateway.services.orchestrator import UIGatewayOrchestrator
 
 router = APIRouter()
 orchestrator = UIGatewayOrchestrator()
+
+MAX_SESSION_HISTORY = 10
+HISTORY_COOKIE = "ir_search_history"
+HISTORY_SEP = "|||"
 
 TEMPLATE_DIR = str(BASE_DIR / "ui_gateway" / "templates")
 jinja_env = Environment(
@@ -67,9 +71,28 @@ async def home(request: Request) -> HTMLResponse:
     )
 
 
+def _parse_history_cookie(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(HISTORY_SEP) if item.strip()]
+
+
+def _format_history_list(history: list[str]) -> str:
+    return ", ".join(history)
+
+
+def _update_history(history: list[str], query: str) -> list[str]:
+    query = query.strip()
+    if not query:
+        return history
+    updated = [query] + [item for item in history if item != query]
+    return updated[:MAX_SESSION_HISTORY]
+
+
 @router.post("/search", response_class=HTMLResponse)
 async def search(
     request: Request,
+    response: Response,
     query: str = Form(...),
     model: str = Form("tfidf"),
     k: int = Form(10),
@@ -84,11 +107,20 @@ async def search(
     weight_tfidf: float = Form(0.34),
     weight_bm25: float = Form(0.33),
     weight_embedding: float = Form(0.33),
+    search_history: str | None = Cookie(default=None),
 ) -> HTMLResponse:
     extra_mode = execution_mode == "extra"
     refinement_enabled = extra_mode and use_refinement == "true"
     personalization_enabled = extra_mode and use_personalization == "true"
-    history_value = user_history if extra_mode else ""
+
+    session_history = _parse_history_cookie(search_history)
+    manual_history = [h.strip() for h in user_history.split(",") if h.strip()]
+    if extra_mode and personalization_enabled and manual_history:
+        history_for_search = manual_history
+    elif extra_mode and personalization_enabled:
+        history_for_search = session_history
+    else:
+        history_for_search = []
 
     search_context = await orchestrator.handle_search(
         query=query,
@@ -100,12 +132,25 @@ async def search(
         use_personalization=personalization_enabled,
         execution_mode=execution_mode,
         dataset_name=dataset_name,
-        user_history=history_value,
+        user_history=_format_history_list(history_for_search),
         fusion_mode=fusion_mode,
         weight_tfidf=weight_tfidf,
         weight_bm25=weight_bm25,
         weight_embedding=weight_embedding,
     )
+
+    if not search_context.get("error") and query.strip():
+        updated_history = _update_history(session_history, query)
+        response.set_cookie(
+            key=HISTORY_COOKIE,
+            value=HISTORY_SEP.join(updated_history),
+            max_age=86400,
+            httponly=False,
+            samesite="lax",
+        )
+        if extra_mode and personalization_enabled and not manual_history:
+            search_context["user_history"] = _format_history_list(updated_history)
+
     return templates.TemplateResponse(
         request,
         "index.html",

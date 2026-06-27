@@ -4,8 +4,8 @@ cd "d:\five year\ir"
 py -m pip install -r requirements.txt
 
 # ===== 1) Services (4 terminals) =====
-py preprocessing_service\main.py      # 8001
-py retrieval_service\main.py          # 8003
+py preprocessing_service\main.py      # 8001 — multiprocessing batch
+py retrieval_service\main.py          # 8003 — indexes preloaded at startup
 py query_refinement\main.py           # 8004
 py ui_gateway\main.py                 # 8000
 
@@ -15,29 +15,35 @@ py ui_gateway\main.py                 # 8000
 py load_data.py
 
 # ===== 3) Build indexes (once, if missing) =====
-# py scripts\migrate_to_library_v2.py
-# OR: py scripts\run_offline_pipeline.py --ir-datasets
+# py scripts\run_offline_pipeline.py --ir-datasets
 
-# ===== 4) Evaluation (Yaser: MAP + nDCG charts + before/after) =====
+# ===== 4) Evaluation — FULL REPORT (2076 queries, NOT 100) =====
 
-# Baseline — all 6 models, 2076 queries
-py scripts\run_evaluation.py
+# Option A — PowerShell script (recommended, multithreaded retrieval)
+powershell -ExecutionPolicy Bypass -File scripts\run_full_report_eval.ps1
 
-# Baseline charts
-py scripts\plot_evaluation_charts.py
-
-# Before/after extras (refinement + personalization #16)
-py scripts\run_evaluation.py --compare-all-extras
-
-# All charts
+# Option B — manual
+py scripts\run_evaluation.py --workers 6
+py scripts\run_evaluation.py --compare-all-extras --workers 6
 py scripts\plot_evaluation_charts.py --comparison data\evaluation\refinement_comparison.json --personalization-comparison data\evaluation\personalization_comparison.json
+py scripts\generate_eval_summary.py
 
-# Quick test only (NOT for report):
+# Verify ALL files show evaluated_queries: 2076
+# type data\evaluation\report.json
+# type data\evaluation\refinement_comparison.json
+# type data\evaluation\personalization_comparison.json
+
+# Quick test ONLY (do NOT use in report):
 # py scripts\run_evaluation.py --compare-all-extras --query-limit 100
 
-# ===== 5) Demo =====
-# See docs/DEMO.md
+# ===== 5) Interview-ready outputs =====
+# data/evaluation/report.json
+# data/evaluation/refinement_comparison.json
+# data/evaluation/personalization_comparison.json
+# data/evaluation/EVALUATION_SUMMARY.md
+# data/evaluation/charts/*.png
 
 # ===== Dataset name mapping =====
 # ir-datasets ID : lotte/lifestyle/dev/forum
 # local folder   : lotte_lifestyle_dev_forum
+# qrels count    : 2076

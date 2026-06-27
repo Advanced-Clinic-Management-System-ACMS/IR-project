@@ -7,4 +7,6 @@ import sys
 
 def ensure_utf8_mode() -> None:
     if sys.platform == "win32" and not sys.flags.utf8_mode:
-        os.execv(sys.executable, [sys.executable, "-X", "utf8", *sys.argv])
+        import subprocess
+
+        raise SystemExit(subprocess.call([sys.executable, "-X", "utf8", *sys.argv]))
