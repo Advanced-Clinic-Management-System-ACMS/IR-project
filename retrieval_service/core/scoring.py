@@ -11,19 +11,19 @@ import numpy as np
 def score_tfidf(query_tokens: list[str], index_data: dict) -> dict[str, float]:
     if not query_tokens:
         return {}
-    vectorizer = index_data["tfidf_vectorizer"]
-    matrix = index_data["tfidf_matrix"]
+    vectorizer = index_data["tfidf_vectorizer"]#عم جيب الممدرب 
+    matrix = index_data["tfidf_matrix"]#مصفوفة الوثائق
     doc_ids = index_data["tfidf_doc_ids"]
-    query_vec = vectorizer.transform([" ".join(query_tokens)])
-    scores = (matrix @ query_vec.T).toarray().ravel()
-    return {doc_ids[i]: float(scores[i]) for i in range(len(doc_ids))}
+    query_vec = vectorizer.transform([" ".join(query_tokens)])#يحول الاستعلام الى متحه تي اف ادي اف
+    scores = (matrix @ query_vec.T).toarray().ravel()#يحسب التشابه بين الاستعلام وكل وثيقة
+    return {doc_ids[i]: float(scores[i]) for i in range(len(doc_ids))}#يربط كل وثيقة بدرجتها
 
 
 def score_bm25(
     query_tokens: list[str],
     index_data: dict,
-    k1: float = 1.5,
-    b: float = 0.75,
+    k1: float = 1.5,#يتحكم بتاثير tf 
+    b: float = 0.75,#يتحكم بتطبيع الطول 
 ) -> dict[str, float]:
     if not query_tokens:
         return {}
@@ -31,7 +31,7 @@ def score_bm25(
     doc_ids = index_data["bm25_doc_ids"]
     bm25.k1 = k1
     bm25.b = b
-    scores = bm25.get_scores(query_tokens)
+    scores = bm25.get_scores(query_tokens)#يحسب درجات BM25
     return {doc_ids[i]: float(scores[i]) for i in range(len(doc_ids))}
 
 
@@ -43,31 +43,38 @@ def score_embedding_semantic(
     faiss_index = index_data.get("faiss_index")
     doc_ids = index_data.get("embedding_doc_ids") or []
     model_name = index_data.get("embedding_model")
-    if faiss_index is None or not doc_ids or not model_name:
+    if faiss_index is None or not doc_ids or not model_name:#عم يتحقق من وجود الباينات
         return {}
-
+#يستورد دالة تحويل النص إلى متجه
     from retrieval_service.infrastructure.embedding_model import encode_text
-
+#يختار النص للتحويل
     text = query_text.strip() or " ".join(query_tokens)
+    #يحول النص إلى متجه أرقام
     query_vector = encode_text(text, model_name)
+
+    #يحول المتجه إلى مصفوفة NumPy بالدقة المطلوبة
+    #يبحث عن أقرب المتجهات إلى query_vectorfaiss_index.search(...)
     scores, indices = faiss_index.search(
-        np.array([query_vector], dtype=np.float32),
+        np.array([query_vector], dtype=np.float32),#يحول المتجه الى مصفةف   ىعةحغnumpy
         len(doc_ids),
     )
     results: dict[str, float] = {}
-    for score, idx in zip(scores[0], indices[0]):
-        if idx != -1:
+    for score, idx in zip(scores[0], indices[0]):#يمر على كل زوج (درجة, رقم وثيقة)
+        if idx != -1:#يتحقق من أن رقم الوثيقة صحيح
             results[doc_ids[idx]] = float(score)
     return results
 
-
+# **لأن score_embedding_semantic تحتاج إلى النص الكامل (وليس الكلمات فقط) لتحويله إلى Embedding (متجه) باستخدام SentenceTransformer، وهذا المتجه
 def _embedding_scores(query_tokens: list[str], index_data: dict) -> dict[str, float]:
+        # هذه الدالة مجرد اختصار (Wrapper) لتجنب تكرار كتابة index_data.get("query_text", "")
+    # تستدعي الدالة الأساسية score_embedding_semantic التي تحسب درجات التشابه باستخدام Embedding + FAISS
     return score_embedding_semantic(
-        query_tokens,
-        index_data.get("query_text", ""),
+        query_tokens,#كلمات الاستعلام بعد التنظيف
+        index_data.get("query_text", ""),#استخراج النص الاصلي
         index_data,
     )
-
+#🎯 ما هو الـ Score (الدرجة)؟
+#الدرجة = رقم يحسبه النظام ليقول لك "كم هذه الوثيقة قريبة من سؤالك". كلما زاد الرقم، زادت الصلة.
 
 def fuse_serial_rerank(
     query_tokens: list[str],
@@ -76,26 +83,29 @@ def fuse_serial_rerank(
     b: float,
     candidate_k: int = 100,
 ) -> dict[str, float]:
-    bm25_scores = score_bm25(query_tokens, index_data, k1=k1, b=b)
-    candidates = rank_documents(bm25_scores, candidate_k)
-    candidate_ids = [doc_id for doc_id, _ in candidates]
+    bm25_scores = score_bm25(query_tokens, index_data, k1=k1, b=b)#يحسب درجات اكل وثيقة 
+    candidates = rank_documents(bm25_scores, candidate_k)#ناخذ افضل 100 وثيقة
+    candidate_ids = [doc_id for doc_id, _ in candidates]#id 
 
-    if index_data.get("faiss_index") is None:
+    if index_data.get("faiss_index") is None:#اذا مافي fassis
         return dict(candidates)
 
-    embedding_scores = _embedding_scores(query_tokens, index_data)
+    embedding_scores = _embedding_scores(query_tokens, index_data)#حساب درجات جميع الوثائف 
     return {doc_id: embedding_scores.get(doc_id, 0.0) for doc_id in candidate_ids}
 
-
+#1. دالة _min_max_normalize - توحيد الدرجات
+# → {"A": 0.0, "B": 0.5, "C": 1.0}
 def _min_max_normalize(scores: dict[str, float]) -> dict[str, float]:
-    if not scores:
-        return {}
-    values = list(scores.values())
-    low, high = min(values), max(values)
-    if high == low:
-        return {doc_id: 1.0 for doc_id in scores}
+    if not scores:                    # إذا كانت الدرجات فارغة
+        return {}                     # نرجع قاموساً فارغاً
+    values = list(scores.values())    # نأخذ كل الدرجات في قائمة
+    low, high = min(values), max(values)  # نجد القيم الصغرى والكبرى
+    if high == low:                   # إذا كانت كل الدرجات متساوية
+        return {doc_id: 1.0 for doc_id in scores}  # نرجع 1.0 لكل وثيقة
     return {doc_id: (score - low) / (high - low) for doc_id, score in scores.items()}
 
+
+# هذه الدالة تدمج درجات ثلاثة نماذج (TF-IDF، BM25، Embedding) في درجة نهائية واحدة باستخدام أوزان مختلفة لكل نموذج.
 
 def fuse_weighted(
     tfidf_scores: dict[str, float],
@@ -116,7 +126,7 @@ def fuse_weighted(
         )
         for doc_id in all_docs
     }
-
+////////////////////////////////////
 
 def fuse_rrf(
     score_maps: list[dict[str, float]],

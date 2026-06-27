@@ -15,14 +15,14 @@ class DocumentProcessorService:
         دمج جميع حقول الوثيقة (Title, Author, Metadata, Text) في نص واحد للتنظيف.
         يتم تكرار العنوان مرتين لإعطائه وزناً أكبر في البحث.
         """
-        parts = []
+        parts = []#قائمة فارغة لتجميع أجزاء النص
         
         # 1. العنوان (نكرره مرتين لأهميته)
-        if document.title and document.title.strip():
-            parts.append(document.title)
-            parts.append(document.title)  # تكرار
+        if document.title and document.title.strip():#التحقق من وجود عنوان
+            parts.append(document.title)#إضافة العنوان إلى القائمة
+            parts.append(document.title)  # تكرار لإعطائه وزناً أكبر في البحث
         
-        # 2. المؤلف (إذا وجد)
+        # 2. المؤلف (إذا وجد) التحقق من وجود حقل المؤلف
         if hasattr(document, 'author') and document.author and document.author.strip():
             parts.append(document.author)
         
@@ -46,14 +46,14 @@ class DocumentProcessorService:
         """
         معالجة وثيقة كاملة: دمج الحقول → تنظيف → توكنايز → stemming
         """
-        combined_text = self.combine_document_fields(document)
-        tokens = self.nlp_engine.process_text(combined_text)
-        
+        combined_text = self.combine_document_fields(document)#دمج جميع الحقول في نص واحد
+        tokens = self.nlp_engine.process_text(combined_text)#تنظيف النص (Normalization, Tokenization, Stop Words, Stemming)
+        #ارجاع النتيجة
         return ProcessedDocument(
             doc_id=document.doc_id,
-            tokens=tokens,
-            original_text=document.text or "",
-            title=document.title, 
+            tokens=tokens,#هذا هو القلب، يستخدم للفهرسة والبحث
+            original_text=document.text or "",#للعرض للمستخدم عندما يرى نتائج البحث
+            title=document.title, #عنوان الوثيقة
         )
 
     def process_raw_query(self, query_text: str) -> list[str]:

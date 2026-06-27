@@ -28,3 +28,23 @@ if __name__ == "__main__":
         port=SERVICE_PORTS["preprocessing"],
         reload=True,
     )
+
+# Path(__file__).resolve() → تحصل على المسار الكامل للملف الحالي
+
+# .parent.parent → تنتقل مجلدين  (إلى مجلد المشروع الرئيسي)
+
+# sys.path.insert(0, ...) → تضيف هذا المسار إلى قائمة المسارات التي يبحث فيها Python 
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #لتششغيل الخدمة نقطة الدخول 
