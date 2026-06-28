@@ -82,6 +82,7 @@ class UIGatewayOrchestrator:
             context["elapsed_ms"] = search_response.elapsed_ms
             context["query_tokens"] = search_response.query_tokens
             context["personalization_applied"] = search_response.personalization_applied
+            context["suggestions"] = search_response.suggestions
             if search_response.query != query:
                 context["refined_query"] = search_response.query
 

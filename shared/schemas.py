@@ -82,6 +82,7 @@ class SearchResponse(BaseModel):
     use_refinement: bool = False
     use_personalization: bool = False
     personalization_applied: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
     fusion_mode: str | None = None
 
 

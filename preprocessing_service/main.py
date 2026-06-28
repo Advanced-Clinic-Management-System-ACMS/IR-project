@@ -12,7 +12,7 @@ from preprocessing_service.api.routes import router
 
 app = FastAPI(
     title="Preprocessing Service",
-    description="Text cleaning, tokenization, and stemming using NLTK.",
+    description="Text cleaning, tokenization, stemming, and WordNet lemmatization (NLTK).",
     version="1.0.0",
 )
 

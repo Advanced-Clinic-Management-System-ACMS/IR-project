@@ -11,12 +11,12 @@ All metrics computed offline on the **full qrels file** (no sampling).
 
 | Model | MAP | Recall | P@10 | nDCG@10 |
 |-------|-----|--------|------|---------|
-| tf_idf | 0.0132 | 0.0109 | 0.0033 | 0.0147 |
-| bm25 | 0.0148 | 0.0113 | 0.0034 | 0.0160 |
-| embedding | 0.0124 | 0.0090 | 0.0027 | 0.0135 |
-| hybrid_serial | 0.0125 | 0.0093 | 0.0028 | 0.0138 |
-| hybrid_parallel | 0.0138 | 0.0114 | 0.0034 | 0.0153 |
-| hybrid_branching | 0.0124 | 0.0103 | 0.0032 | 0.0138 |
+| tf_idf | 0.2020 | 0.1462 | 0.0787 | 0.2668 |
+| bm25 | 0.3176 | 0.2183 | 0.1174 | 0.3923 |
+| embedding | 0.4979 | 0.3819 | 0.2095 | 0.5933 |
+| hybrid_serial | 0.4883 | 0.3368 | 0.1843 | 0.5706 |
+| hybrid_parallel | 0.4055 | 0.2874 | 0.1579 | 0.4915 |
+| hybrid_branching | 0.3147 | 0.2377 | 0.1312 | 0.3904 |
 
 # Query Refinement — Before vs After
 

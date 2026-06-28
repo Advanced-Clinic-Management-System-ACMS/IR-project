@@ -3,42 +3,44 @@
   "total_qrels_queries": 2076,
   "evaluated_queries": 2076,
   "top_k": 10,
+  "workers": 1,
+  "use_refinement": false,
   "metrics": {
     "tf_idf": {
-      "MAP": 0.0132,
-      "Recall": 0.0109,
-      "PrecisionAt10": 0.0033,
-      "nDCGAt10": 0.0147
+      "MAP": 0.202,
+      "Recall": 0.1462,
+      "PrecisionAt10": 0.0787,
+      "nDCGAt10": 0.2668
     },
     "bm25": {
-      "MAP": 0.0148,
-      "Recall": 0.0113,
-      "PrecisionAt10": 0.0034,
-      "nDCGAt10": 0.016
+      "MAP": 0.3176,
+      "Recall": 0.2183,
+      "PrecisionAt10": 0.1174,
+      "nDCGAt10": 0.3923
     },
     "embedding": {
-      "MAP": 0.0124,
-      "Recall": 0.009,
-      "PrecisionAt10": 0.0027,
-      "nDCGAt10": 0.0135
+      "MAP": 0.4979,
+      "Recall": 0.3819,
+      "PrecisionAt10": 0.2095,
+      "nDCGAt10": 0.5933
     },
     "hybrid_serial": {
-      "MAP": 0.0125,
-      "Recall": 0.0093,
-      "PrecisionAt10": 0.0028,
-      "nDCGAt10": 0.0138
+      "MAP": 0.4883,
+      "Recall": 0.3368,
+      "PrecisionAt10": 0.1843,
+      "nDCGAt10": 0.5706
     },
     "hybrid_parallel": {
-      "MAP": 0.0138,
-      "Recall": 0.0114,
-      "PrecisionAt10": 0.0034,
-      "nDCGAt10": 0.0153
+      "MAP": 0.4055,
+      "Recall": 0.2874,
+      "PrecisionAt10": 0.1579,
+      "nDCGAt10": 0.4915
     },
     "hybrid_branching": {
-      "MAP": 0.0124,
-      "Recall": 0.0103,
-      "PrecisionAt10": 0.0032,
-      "nDCGAt10": 0.0138
+      "MAP": 0.3147,
+      "Recall": 0.2377,
+      "PrecisionAt10": 0.1312,
+      "nDCGAt10": 0.3904
     }
   }
 }

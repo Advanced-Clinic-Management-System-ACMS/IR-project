@@ -94,14 +94,21 @@ Production path: `retrieval_service/core/factory.py` → `core/strategies/` → 
 # Full pipeline (multithreaded retrieval, interview-ready outputs)
 powershell -ExecutionPolicy Bypass -File scripts\run_full_report_eval.ps1
 
+# Validate before submission:
+powershell -ExecutionPolicy Bypass -File scripts\validate_evaluation.ps1
+
+# Rebuild stale baseline only (if MAP ~0.01):
+powershell -ExecutionPolicy Bypass -File scripts\rebuild_baseline_report.ps1
+
 # Or manual:
-py scripts\run_evaluation.py --workers 6
-py scripts\run_evaluation.py --compare-all-extras --workers 6
+py scripts\run_evaluation.py --workers 1
+py scripts\run_evaluation.py --compare-all-extras --workers 1
 py scripts\plot_evaluation_charts.py --comparison data\evaluation\refinement_comparison.json --personalization-comparison data\evaluation\personalization_comparison.json
 py scripts\generate_eval_summary.py
 ```
 
-Interview-ready outputs: `data/evaluation/EVALUATION_SUMMARY.md` + `data/evaluation/charts/*.png`
+Interview-ready outputs: `data/evaluation/EVALUATION_SUMMARY.md` + `data/evaluation/charts/*.png`  
+Submission checklist: `docs/SUBMISSION_DAY.md` | Arabic report: `docs/REPORT_AR.md`
 
 Use `--query-limit 100` only for quick local testing — never in the report.
 

@@ -76,7 +76,7 @@ flowchart LR
 
 Indexing uses **Sentence-BERT** (`all-MiniLM-L6-v2`):
 
-- Index time: encode `original_text` → `embeddings.npy`
+- Index time: encode `original_text` → `embeddings.npz` + `faiss.index`
 - Query time: encode query text → cosine similarity against stored vectors
 
 Metadata stored in `data/indexes/<dataset>/metadata.json`:

@@ -9,7 +9,7 @@ from shared.config import SERVICE_URLS
 
 
 class RefinementClient:
-    def __init__(self, base_url: str | None = None, timeout: float = 15.0) -> None:
+    def __init__(self, base_url: str | None = None, timeout: float = 30.0) -> None:
         self.base_url = base_url or SERVICE_URLS["query_refinement"]
         self.timeout = timeout
 
@@ -19,7 +19,7 @@ class RefinementClient:
         history: list[str] | None = None,
         use_refinement: bool = True,
         use_personalization: bool = False,
-    ) -> tuple[str, list[str]]:
+    ) -> tuple[str, list[str], list[str]]:
         response = requests.post(
             f"{self.base_url}/refine",
             json={
@@ -35,4 +35,5 @@ class RefinementClient:
         return (
             payload.get("refined_query", query_text),
             payload.get("personalization_applied", []),
+            payload.get("suggestions", []),
         )

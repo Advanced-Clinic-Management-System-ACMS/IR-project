@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -40,3 +41,6 @@ DEFAULT_BM25_K1 = 1.5
 DEFAULT_BM25_B = 0.75
 DEFAULT_TOP_K = 10
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+# "stem" keeps compatibility with the built LoTTE index; use "lemma" only after re-indexing.
+NLP_NORMALIZATION_MODE = os.environ.get("IR_NLP_MODE", "stem")

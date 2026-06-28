@@ -74,7 +74,12 @@ async def home(request: Request) -> HTMLResponse:
 def _parse_history_cookie(raw: str | None) -> list[str]:
     if not raw:
         return []
-    return [item.strip() for item in raw.split(HISTORY_SEP) if item.strip()]
+    items = [item.strip() for item in raw.split(HISTORY_SEP) if item.strip()]
+    return items[:MAX_SESSION_HISTORY]
+
+
+def _cap_history(items: list[str]) -> list[str]:
+    return items[:MAX_SESSION_HISTORY]
 
 
 def _format_history_list(history: list[str]) -> str:
@@ -114,7 +119,7 @@ async def search(
     personalization_enabled = extra_mode and use_personalization == "true"
 
     session_history = _parse_history_cookie(search_history)
-    manual_history = [h.strip() for h in user_history.split(",") if h.strip()]
+    manual_history = _cap_history([h.strip() for h in user_history.split(",") if h.strip()])
     if extra_mode and personalization_enabled and manual_history:
         history_for_search = manual_history
     elif extra_mode and personalization_enabled:

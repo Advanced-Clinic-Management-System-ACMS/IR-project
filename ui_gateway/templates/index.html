@@ -184,6 +184,37 @@
 
         .field select { cursor: pointer; }
 
+        .field input[type="range"] {
+            width: 100%;
+            height: 6px;
+            margin: 12px 0 4px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .slider-value {
+            font-family: var(--mono);
+            font-size: 13px;
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .result-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        .suggestions-list {
+            margin-top: 8px;
+            padding-right: 16px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .suggestions-list li { margin-bottom: 4px; }
+
         .mode-row {
             display: flex;
             flex-wrap: wrap;
@@ -464,12 +495,14 @@
                         </select>
                     </div>
                     <div class="field">
-                        <label>BM25 — k1</label>
-                        <input type="number" step="0.1" min="0.1" name="bm25_k1" value="{{ bm25_k1 }}">
+                        <label>BM25 — k1 <span class="slider-value" id="bm25_k1_val">{{ bm25_k1 }}</span></label>
+                        <input type="range" name="bm25_k1" min="0.5" max="3.0" step="0.1" value="{{ bm25_k1 }}"
+                               data-value-target="bm25_k1_val">
                     </div>
                     <div class="field">
-                        <label>BM25 — b</label>
-                        <input type="number" step="0.05" min="0" max="1" name="bm25_b" value="{{ bm25_b }}">
+                        <label>BM25 — b <span class="slider-value" id="bm25_b_val">{{ bm25_b }}</span></label>
+                        <input type="range" name="bm25_b" min="0" max="1" step="0.05" value="{{ bm25_b }}"
+                               data-value-target="bm25_b_val">
                     </div>
                     <div class="field">
                         <label>Dataset</label>
@@ -552,6 +585,17 @@
             </div>
             {% endif %}
 
+            {% if suggestions %}
+            <div class="notice">
+                <span class="notice-label">اقتراحات التحسين</span>
+                <ul class="suggestions-list">
+                    {% for item in suggestions %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
             {% if query_tokens %}
             <div class="tokens">
                 {% for token in query_tokens %}
@@ -568,7 +612,10 @@
                         <span class="result-id">{{ result.doc_id }}</span>
                         <span class="result-score">{{ "%.4f"|format(result.score) }}</span>
                     </div>
-                    <div class="result-body">{{ result.text or result.snippet or "—" }}</div>
+                    {% if result.title %}
+                    <div class="result-title">{{ result.title }}</div>
+                    {% endif %}
+                    <div class="result-body">{{ result.snippet or "—" }}</div>
                 </article>
                 {% endfor %}
             {% else %}
@@ -586,6 +633,14 @@
                 document.querySelectorAll('.extra-panel').forEach(function (el) {
                     el.classList.toggle('hidden', !extra);
                 });
+            });
+        });
+
+        document.querySelectorAll('input[type="range"][data-value-target]').forEach(function (slider) {
+            var target = document.getElementById(slider.getAttribute('data-value-target'));
+            if (!target) return;
+            slider.addEventListener('input', function () {
+                target.textContent = slider.value;
             });
         });
     </script>

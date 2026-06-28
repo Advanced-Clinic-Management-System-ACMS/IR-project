@@ -30,6 +30,8 @@ def health_check() -> HealthResponse:
         status="ok",
         details={
             "stemmer": "PorterStemmer",
+            "lemmatizer": "WordNetLemmatizer",
+            "normalization_mode": processor_service.nlp_engine.normalization_mode,
             "library": "NLTK",
             "parallel_workers": MAX_PREPROCESS_WORKERS,
         },

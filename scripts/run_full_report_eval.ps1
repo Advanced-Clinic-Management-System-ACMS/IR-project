@@ -26,24 +26,46 @@ $reportPath = "data\evaluation\report.json"
 $needsBaseline = $true
 if (Test-Path $reportPath) {
     $reportJson = Get-Content $reportPath -Raw | ConvertFrom-Json
-    if ($reportJson.evaluated_queries -eq 2076) {
+    $bm25Map = $reportJson.metrics.bm25.MAP
+    $hasFullRun = ($reportJson.evaluated_queries -eq 2076) -and ($bm25Map -ge 0.1)
+    if ($hasFullRun) {
         $needsBaseline = $false
         Write-Host ""
-        Write-Host "Baseline report.json already has 2076 queries - skipping Step 1." -ForegroundColor Green
+        Write-Host "Baseline report.json valid (2076 queries, bm25 MAP=$bm25Map) - skipping Step 1." -ForegroundColor Green
+    } elseif ($reportJson.evaluated_queries -eq 2076) {
+        Write-Host ""
+        Write-Host "WARNING: report.json has 2076 queries but bm25 MAP=$bm25Map (stale). Re-running baseline." -ForegroundColor Yellow
     }
 }
 
 if ($needsBaseline) {
     Write-Host ""
     Write-Host "Step 1/4: baseline metrics - all 6 models, 2076 queries..." -ForegroundColor Yellow
-    py -u scripts\run_evaluation.py --workers 6
+    py -u scripts\run_evaluation.py --workers 1
     if (-not $?) { exit 1 }
 }
 
 Write-Host ""
 Write-Host "Step 2/4: before/after refinement + personalization - 2076 queries each..." -ForegroundColor Yellow
-py -u scripts\run_evaluation.py --compare-all-extras --workers 6
-if (-not $?) { exit 1 }
+Write-Host "Skipping if comparison files already valid (run with -ForceComparisons to redo)." -ForegroundColor DarkGray
+$forceComparisons = $args -contains "-ForceComparisons"
+$skipComparisons = $false
+if (-not $forceComparisons) {
+    $refPath = "data\evaluation\refinement_comparison.json"
+    $persPath = "data\evaluation\personalization_comparison.json"
+    if ((Test-Path $refPath) -and (Test-Path $persPath)) {
+        $refJson = Get-Content $refPath -Raw | ConvertFrom-Json
+        $persJson = Get-Content $persPath -Raw | ConvertFrom-Json
+        if ($refJson.evaluated_queries -eq 2076 -and $persJson.evaluated_queries -eq 2076) {
+            $skipComparisons = $true
+            Write-Host "Comparison JSON files already complete - skipping Step 2." -ForegroundColor Green
+        }
+    }
+}
+if (-not $skipComparisons) {
+    py -u scripts\run_evaluation.py --compare-all-extras --workers 1
+    if (-not $?) { exit 1 }
+}
 
 Write-Host ""
 Write-Host "Step 3/4: regenerate all charts..." -ForegroundColor Yellow

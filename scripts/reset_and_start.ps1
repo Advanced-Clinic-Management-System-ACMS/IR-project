@@ -3,7 +3,7 @@ $ErrorActionPreference = "SilentlyContinue"
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
 Write-Host "=== Stopping old processes on IR ports ===" -ForegroundColor Yellow
-foreach ($port in @(8000, 8001, 8003, 8004)) {
+foreach ($port in @(8000, 8001, 8002, 8003, 8004, 8005)) {
     $lines = netstat -ano | Select-String ":$port\s.*LISTENING"
     foreach ($line in $lines) {
         $pid = ($line -split '\s+')[-1]
@@ -33,9 +33,22 @@ Write-Host '  cd "d:\five year\ir"'
 Write-Host "  .\.venv\Scripts\Activate.ps1"
 Write-Host "  py query_refinement\main.py"
 Write-Host ""
-Write-Host "Terminal 4 (ONLY after 8003 health works):" -ForegroundColor Green
+Write-Host "Terminal 4 (query refinement):" -ForegroundColor Green
 Write-Host '  cd "d:\five year\ir"'
 Write-Host "  .\.venv\Scripts\Activate.ps1"
-Write-Host "  Invoke-WebRequest http://127.0.0.1:8003/health -UseBasicParsing"
-Write-Host "  py -u scripts\run_evaluation.py --compare-all-extras --workers 1"
+Write-Host "  py query_refinement\main.py"
+Write-Host ""
+Write-Host "Terminal 5 (optional evaluation API):" -ForegroundColor Green
+Write-Host '  cd "d:\five year\ir"'
+Write-Host "  .\.venv\Scripts\Activate.ps1"
+Write-Host "  py evaluation_service\main.py"
+Write-Host ""
+Write-Host "Terminal 6 (UI + validation):" -ForegroundColor Green
+Write-Host '  cd "d:\five year\ir"'
+Write-Host "  .\.venv\Scripts\Activate.ps1"
+Write-Host "  py ui_gateway\main.py"
+Write-Host "  .\scripts\validate_evaluation.ps1"
+Write-Host ""
+Write-Host "Rebuild stale baseline (if MAP ~0.01):" -ForegroundColor Yellow
+Write-Host "  .\scripts\rebuild_baseline_report.ps1"
 Write-Host ""
